@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from krita_export_plugin import krita_view_adapter
-from krita_export_plugin.krita_view_adapter import KritaViewAdapter
+from krita_ai_metadata import krita_view_adapter
+from krita_ai_metadata.krita_view_adapter import KritaViewAdapter
 
 
 class FakeView:

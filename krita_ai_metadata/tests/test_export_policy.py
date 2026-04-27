@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from krita_export_plugin.export_policy import ExportDecision, ExportPolicy
+from krita_ai_metadata.export_policy import ExportDecision, ExportPolicy
 
 
 def test_unresolved_defaults_to_abort():

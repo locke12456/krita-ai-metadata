@@ -3,7 +3,7 @@ from __future__ import annotations
 from ai_diffusion.image import Bounds
 from ai_diffusion.jobs import JobParams, JobRegion
 
-from krita_export_plugin.job_params_serializer import JobParamsSerializer
+from krita_ai_metadata.job_params_serializer import JobParamsSerializer
 
 
 def test_job_params_serializer_roundtrip_through_from_dict():

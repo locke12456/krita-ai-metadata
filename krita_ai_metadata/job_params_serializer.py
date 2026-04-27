@@ -32,7 +32,7 @@ class JobParamsSerializer:
             "seed": params.seed,
             "has_mask": params.has_mask,
             "is_layered": params.is_layered,
-            "inpaint_mode": _serialize_value(params.inpaint_mode),
+            "inpaint_mode": _serialize_value(getattr(params, "inpaint_mode", None)),
             "frame": list(params.frame),
             "animation_id": params.animation_id,
             "resize_canvas": params.resize_canvas,

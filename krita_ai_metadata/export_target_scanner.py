@@ -52,10 +52,15 @@ class ExportTargetScanner:
             if not self._is_exportable_layer(layer):
                 continue
 
-            record = self._resolve_record(layer, sync_map_store)
+            record, inherited_from = self._resolve_record(layer, sync_map_store)
             target_type = self._target_type(layer, record)
             key = self._target_key(layer, record)
             warnings: list[str] = []
+
+            if inherited_from:
+                warnings.append(
+                    f"Metadata for layer '{layer.name}' inherited from parent group '{inherited_from}'."
+                )
 
             if record is None:
                 warnings.append(f"No sync metadata found for layer '{layer.name}'.")
@@ -86,42 +91,49 @@ class ExportTargetScanner:
 
         return layers
 
-    def _resolve_record(self, layer: Layer, sync_map_store: Any) -> dict[str, Any] | None:
-        """Resolve sync metadata by layer ID, group ID, then group name."""
+    def _resolve_record(
+        self,
+        layer: Layer,
+        sync_map_store: Any,
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        """Resolve sync metadata and report when metadata is inherited from a parent group."""
         layer_id = layer.id_string
 
         record = self._call_optional(sync_map_store, "resolve_layer", layer_id)
         if record is not None:
-            return record
+            return record, None
 
         record = self._call_optional(sync_map_store, "resolve_group_id", layer_id)
         if record is not None:
-            return record
+            return record, None
 
         record = self._call_optional(sync_map_store, "resolve_group_name", layer.name)
         if record is not None:
-            return record
+            return record, None
 
         record = self._lookup_map(sync_map_store, "records_by_layer_id", layer_id)
         if record is not None:
-            return record
+            return record, None
 
         record = self._lookup_map(sync_map_store, "records_by_group_id", layer_id)
         if record is not None:
-            return record
+            return record, None
 
         record = self._lookup_map(sync_map_store, "records_by_group_name", layer.name)
         if record is not None:
-            return record
+            return record, None
 
         parent = layer.parent_layer
         if parent is not None:
             parent_record = self._lookup_map(sync_map_store, "records_by_group_id", parent.id_string)
             if parent_record is not None:
-                return parent_record
-            return self._lookup_map(sync_map_store, "records_by_group_name", parent.name)
+                return parent_record, parent.name
 
-        return None
+            parent_record = self._lookup_map(sync_map_store, "records_by_group_name", parent.name)
+            if parent_record is not None:
+                return parent_record, parent.name
+
+        return None, None
 
     def _is_exportable_layer(self, layer: Layer) -> bool:
         """Return True when the layer can be exported as image content."""

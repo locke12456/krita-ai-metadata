@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from krita_export_plugin.sync_map_store import SCHEMA_VERSION, SyncMapStore
+from krita_ai_metadata.sync_map_store import SCHEMA_VERSION, SyncMapStore
 
 
 def test_migrate_raw_adds_missing_schema_fields():

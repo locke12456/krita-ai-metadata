@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from krita_export_plugin.group_key import GroupKeyResolver
+from krita_ai_metadata.group_key import GroupKeyResolver
 
 
 def test_group_key_uses_index_short_job_id_and_seed():

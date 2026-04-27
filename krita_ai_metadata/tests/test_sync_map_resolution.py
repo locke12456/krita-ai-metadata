@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from krita_export_plugin.export_target_scanner import ExportMode, ExportTargetScanner
+from krita_ai_metadata.export_target_scanner import ExportMode, ExportTargetScanner
 
 
 @dataclass

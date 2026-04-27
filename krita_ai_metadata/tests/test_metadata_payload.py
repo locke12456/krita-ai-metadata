@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from krita_export_plugin.export_target_scanner import ExportTarget
-from krita_export_plugin.metadata_resolver import MetadataResolver
+from krita_ai_metadata.export_target_scanner import ExportTarget
+from krita_ai_metadata.metadata_resolver import MetadataResolver
 
 
 @dataclass
