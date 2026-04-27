@@ -307,6 +307,20 @@ def create_img_metadata(params: JobParams) -> str:
 text_mod.create_img_metadata = create_img_metadata
 sys.modules["ai_diffusion.text"] = text_mod
 
+
+# ---- ai_diffusion.util --------------------------------------------------
+util_mod = types.ModuleType("ai_diffusion.util")
+
+
+def trim_text(text: str, max_length: int) -> str:
+    if len(text) > max_length:
+        return text[: max_length - 3] + "..."
+    return text
+
+
+util_mod.trim_text = trim_text
+sys.modules["ai_diffusion.util"] = util_mod
+
 # ---- additional docker/test stubs -----------------------------------------
 # These stubs keep local pytest collection working outside Krita while avoiding
 # the real ai_diffusion package import side effects.

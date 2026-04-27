@@ -38,7 +38,7 @@ class MetadataResolver:
         warnings = list(target.warnings)
 
         if target.record is None:
-            payload = self._payload(target, None, "")
+            payload = self._payload(target, None, "", warnings)
             return ResolvedMetadata(
                 target=target,
                 key=target.key,
@@ -52,7 +52,7 @@ class MetadataResolver:
         params_snapshot = target.record.get("params_snapshot")
         if not isinstance(params_snapshot, dict):
             warnings.append(f"Sync record for '{target.key}' has no params_snapshot.")
-            payload = self._payload(target, target.record, "")
+            payload = self._payload(target, target.record, "", warnings)
             return ResolvedMetadata(
                 target=target,
                 key=target.key,
@@ -63,6 +63,10 @@ class MetadataResolver:
                 warnings=warnings,
             )
 
+        link_warning = self._target_link_warning(target, target.record)
+        if link_warning:
+            warnings.append(link_warning)
+
         try:
             params = self._serializer.deserialize_job_params(params_snapshot)
             parameters = create_img_metadata(params)
@@ -71,7 +75,7 @@ class MetadataResolver:
             params = None
             parameters = ""
 
-        payload = self._payload(target, target.record, parameters)
+        payload = self._payload(target, target.record, parameters, warnings)
         return ResolvedMetadata(
             target=target,
             key=target.key,
@@ -82,11 +86,26 @@ class MetadataResolver:
             warnings=warnings,
         )
 
+    def _target_link_warning(self, target: ExportTarget, record: dict[str, Any]) -> str:
+        """Return a warning when metadata was resolved from a non-direct record."""
+        layer_ids = record.get("layer_ids", [])
+        if isinstance(layer_ids, list) and target.layer.id_string in layer_ids:
+            return ""
+
+        if record.get("target_type") == "group":
+            if record.get("group_id") == target.layer.id_string:
+                return ""
+            if record.get("group_name") == target.layer.name:
+                return ""
+
+        return f"Sync record for '{target.key}' does not directly list layer '{target.layer.name}'."
+
     def _payload(
         self,
         target: ExportTarget,
         record: dict[str, Any] | None,
         parameters: str,
+        warnings: list[str] | None = None,
     ) -> dict[str, Any]:
         """Build the sidecar JSON metadata payload."""
         record = record or {}
@@ -106,7 +125,7 @@ class MetadataResolver:
             "params_snapshot": dict(record.get("params_snapshot", {})),
             "a1111_parameters": parameters,
             "children": self._children_payload(target),
-            "warnings": list(target.warnings),
+            "warnings": list(warnings or target.warnings),
             "metadata_inherited": any("inherited from parent group" in warning for warning in target.warnings),
         }
 

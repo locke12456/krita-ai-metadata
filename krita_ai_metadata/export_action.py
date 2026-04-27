@@ -70,12 +70,12 @@ class ExportAction:
             record = store.resolve_group(group_id=layer.id_string, group_name=layer.name)
             if record is None:
                 continue
-            if record.params_snapshot:
-                continue
-
             layers = layer.child_layers or [layer]
             snapshot = resolver.params_snapshot_for_layers(layers)
             if not snapshot:
+                continue
+
+            if record.params_snapshot == snapshot:
                 continue
 
             record.params_snapshot = snapshot

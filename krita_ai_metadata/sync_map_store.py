@@ -138,7 +138,19 @@ class SyncMapStore:
         return record
 
     def resolve_layer(self, layer_id: str) -> SyncRecord | None:
-        return self.data.records_by_layer_id.get(layer_id)
+        record = self.data.records_by_layer_id.get(layer_id)
+        if record is None:
+            return None
+
+        if self._record_contains_layer(record, layer_id):
+            return record
+
+        self.data.records_by_layer_id.pop(layer_id, None)
+        return None
+
+    def _record_contains_layer(self, record: SyncRecord, layer_id: str) -> bool:
+        """Return True when a sync record explicitly references the layer id."""
+        return layer_id in record.layer_ids
 
     def resolve_group(self, group_id: str | None = None, group_name: str | None = None) -> SyncRecord | None:
         if group_id and group_id in self.data.records_by_group_id:

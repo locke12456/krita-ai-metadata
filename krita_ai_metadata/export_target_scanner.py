@@ -148,11 +148,11 @@ class ExportTargetScanner:
         layer: Layer,
         sync_map_store: Any,
     ) -> tuple[dict[str, Any] | None, str | None]:
-        """Resolve sync metadata and report when metadata is inherited from a parent group."""
+        """Resolve only metadata that is explicitly linked to this layer target."""
         layer_id = layer.id_string
 
         record = self._normalize_record(sync_map_store.resolve_layer(layer_id))
-        if record is not None:
+        if record is not None and self._record_applies_to_layer(record, layer_id):
             return record, None
 
         record = self._normalize_record(
@@ -166,10 +166,22 @@ class ExportTargetScanner:
             parent_record = self._normalize_record(
                 sync_map_store.resolve_group(group_id=parent.id_string, group_name=parent.name)
             )
-            if parent_record is not None:
+            if parent_record is not None and self._record_applies_to_layer(parent_record, layer_id):
                 return parent_record, parent.name
 
         return None, None
+
+    def _record_contains_layer(self, record: dict[str, Any], layer_id: str) -> bool:
+        """Return True when a sync record explicitly references the layer id."""
+        layer_ids = record.get("layer_ids", [])
+        return isinstance(layer_ids, list) and layer_id in layer_ids
+
+    def _record_applies_to_layer(self, record: dict[str, Any], layer_id: str) -> bool:
+        """Return True when a record is compatible with a layer target."""
+        layer_ids = record.get("layer_ids")
+        if layer_ids is None:
+            return True
+        return isinstance(layer_ids, list) and layer_id in layer_ids
 
     def _is_exportable_layer(self, layer: Layer) -> bool:
         """Return True when the layer can be exported as image content."""
