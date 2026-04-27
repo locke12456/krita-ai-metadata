@@ -69,7 +69,7 @@ class SyncMapStore:
             self.data = SyncMapData()
             return
         payload = bytes(annotation).decode("utf-8")
-        raw = json.loads(payload)
+        raw = self._migrate_raw(json.loads(payload))
         self.data = SyncMapData(
             version=int(raw.get("version", SCHEMA_VERSION)),
             next_sync_index=int(raw.get("next_sync_index", 1)),
@@ -80,6 +80,25 @@ class SyncMapStore:
             self.data.records_by_group_id[group_id] = SyncRecord.from_dict(record)
         for group_name, record in raw.get("records_by_group_name", {}).items():
             self.data.records_by_group_name[group_name] = SyncRecord.from_dict(record)
+
+    def _migrate_raw(self, raw: dict[str, Any]) -> dict[str, Any]:
+        """Migrate persisted sync-map payloads to the current schema."""
+        version = int(raw.get("version", 0) or 0)
+
+        if version <= 0:
+            raw = dict(raw)
+            raw["version"] = SCHEMA_VERSION
+
+        if version > SCHEMA_VERSION:
+            raise ValueError(
+                f"Unsupported sync map schema version {version}; expected {SCHEMA_VERSION}."
+            )
+
+        raw.setdefault("next_sync_index", 1)
+        raw.setdefault("records_by_layer_id", {})
+        raw.setdefault("records_by_group_id", {})
+        raw.setdefault("records_by_group_name", {})
+        return raw
 
     def save(self) -> None:
         raw = {

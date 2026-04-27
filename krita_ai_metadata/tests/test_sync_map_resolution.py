@@ -79,3 +79,54 @@ def test_scanner_marks_unresolved_target_warning():
     assert not targets[0].is_resolved
     assert targets[0].warnings
     assert "No sync metadata" in targets[0].warnings[0]
+
+
+def test_scanner_resolves_group_record_by_group_id():
+    layer = FakeLayer(id_string="{group-1}", name="Group 1")
+    manager = FakeLayerManager(all=[layer], active=layer)
+    store = FakeSyncMapStore(
+        records_by_layer_id={},
+        records_by_group_id={
+            "{group-1}": {
+                "target_type": "group",
+                "export_key": "0001-group",
+                "group_id": "{group-1}",
+                "group_name": "Group 1",
+                "layer_ids": ["{child-1}"],
+                "params_snapshot": {},
+            }
+        },
+    )
+
+    targets = ExportTargetScanner().scan(manager, store, ExportMode.all)
+
+    assert len(targets) == 1
+    assert targets[0].is_resolved
+    assert targets[0].key == "0001-group"
+    assert targets[0].target_type == "group"
+
+
+def test_scanner_marks_parent_group_metadata_as_inherited():
+    parent = FakeLayer(id_string="{group-2}", name="Parent Group")
+    child = FakeLayer(id_string="{child-2}", name="Child Layer", parent_layer=parent)
+    manager = FakeLayerManager(all=[child], active=child)
+    store = FakeSyncMapStore(
+        records_by_layer_id={},
+        records_by_group_id={
+            "{group-2}": {
+                "target_type": "group",
+                "export_key": "0002-group",
+                "group_id": "{group-2}",
+                "group_name": "Parent Group",
+                "layer_ids": ["{child-2}"],
+                "params_snapshot": {},
+            }
+        },
+    )
+
+    targets = ExportTargetScanner().scan(manager, store, ExportMode.all)
+
+    assert len(targets) == 1
+    assert targets[0].is_resolved
+    assert targets[0].key == "0002-group"
+    assert any("inherited from parent group" in warning for warning in targets[0].warnings)

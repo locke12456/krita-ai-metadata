@@ -70,6 +70,7 @@ def test_metadata_resolver_builds_sidecar_payload():
     assert metadata.payload["key"] == "0001-job-seed"
     assert metadata.payload["seed"] == 123
     assert metadata.payload["layer_ids"] == ["{layer-1}"]
+    assert metadata.payload["metadata_inherited"] is False
 
 
 def test_metadata_resolver_reports_missing_snapshot():
@@ -85,3 +86,33 @@ def test_metadata_resolver_reports_missing_snapshot():
     assert not metadata.has_metadata
     assert metadata.warnings
     assert "params_snapshot" in metadata.warnings[0]
+
+
+def test_metadata_resolver_marks_inherited_payload():
+    target = ExportTarget(
+        layer=FakeLayer(),
+        target_type="group",
+        key="0001-job-seed",
+        record={
+            "target_type": "group",
+            "export_key": "0001-job-seed",
+            "params_snapshot": {
+                "bounds": [0, 0, 512, 768],
+                "name": "prompt",
+                "regions": [],
+                "metadata": {"prompt": "cat"},
+                "seed": 123,
+                "has_mask": False,
+                "is_layered": False,
+                "frame": [0, 0, 0],
+                "animation_id": "",
+                "resize_canvas": False,
+            },
+        },
+        warnings=["Metadata for layer 'Layer 1' inherited from parent group 'Group 1'."],
+    )
+
+    metadata = MetadataResolver().resolve(target)
+
+    assert metadata.payload["metadata_inherited"] is True
+    assert any("inherited from parent group" in warning for warning in metadata.warnings)

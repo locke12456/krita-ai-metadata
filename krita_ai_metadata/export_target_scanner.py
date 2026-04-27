@@ -173,14 +173,21 @@ class ExportTargetScanner:
         return None
 
     def _lookup_map(self, owner: Any, attr_name: str, key: str) -> dict[str, Any] | None:
-        """Read an optional record map by key."""
+        """Read an optional record map by key, including SyncMapStore.data maps."""
         mapping = getattr(owner, attr_name, None)
+        if not isinstance(mapping, dict):
+            data = getattr(owner, "data", None)
+            mapping = getattr(data, attr_name, None)
+
         if not isinstance(mapping, dict):
             return None
 
-        result = mapping.get(key)
+        return self._normalize_record(mapping.get(key))
+
+    def _normalize_record(self, result: Any) -> dict[str, Any] | None:
+        """Convert SyncRecord-like results into dictionaries."""
         if isinstance(result, dict):
-            return result
+            return dict(result)
 
         if hasattr(result, "to_dict"):
             converted = result.to_dict()

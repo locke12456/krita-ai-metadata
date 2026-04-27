@@ -105,6 +105,7 @@ class MetadataResolver:
             "a1111_parameters": parameters,
             "children": self._children_payload(target),
             "warnings": list(target.warnings),
+            "metadata_inherited": any("inherited from parent group" in warning for warning in target.warnings),
         }
 
     def _children_payload(self, target: ExportTarget) -> list[dict[str, Any]]:
