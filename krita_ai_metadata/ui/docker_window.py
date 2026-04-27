@@ -5,11 +5,13 @@ from typing import Any
 
 from PyQt5.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QFileDialog,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -37,6 +39,8 @@ class DockerWindow(QWidget):
 
         self._status_label = QLabel("No active document.", self)
         self._selection_label = QLabel("Selected layers: 0", self)
+        self._output_status_label = QLabel("", self)
+        self._output_dir_user_set = False
 
         self._error_label = QLabel("", self)
         self._error_label.setWordWrap(True)
@@ -77,10 +81,22 @@ class DockerWindow(QWidget):
         self._manifest_checkbox = QCheckBox("Write manifest", self)
         self._manifest_checkbox.setChecked(True)
         self._include_invisible_checkbox = QCheckBox("Include invisible selected targets", self)
+        self._group_label = QLineEdit("", self)
+        self._group_label.setPlaceholderText("Group label for new metadata groups")
+
+        self._mode_combo = QComboBox(self)
+        self._mode_combo.addItem("Selected docker layers", ExportMode.selected)
+        self._mode_combo.addItem("Visible targets", ExportMode.visible)
+        self._mode_combo.addItem("All targets", ExportMode.all)
 
         self._layer_list_widget = QWidget(self)
         self._layer_list_layout = QVBoxLayout()
         self._layer_list_widget.setLayout(self._layer_list_layout)
+
+        self._layer_scroll_area = QScrollArea(self)
+        self._layer_scroll_area.setWidgetResizable(True)
+        self._layer_scroll_area.setMinimumHeight(180)
+        self._layer_scroll_area.setWidget(self._layer_list_widget)
 
         self._refresh_button.clicked.connect(self.refresh)
         self._import_selection_button.clicked.connect(self.import_current_selection)
@@ -102,16 +118,27 @@ class DockerWindow(QWidget):
         output_layout.addWidget(self._output_dir)
         output_layout.addWidget(self._browse_button)
 
+        mode_layout = QHBoxLayout()
+        mode_layout.addWidget(QLabel("Export mode:", self))
+        mode_layout.addWidget(self._mode_combo)
+
+        group_label_layout = QHBoxLayout()
+        group_label_layout.addWidget(QLabel("Group label:", self))
+        group_label_layout.addWidget(self._group_label)
+
         layout = QVBoxLayout()
         layout.addWidget(self._status_label)
         layout.addWidget(self._error_label)
         layout.addWidget(self._selection_label)
         layout.addWidget(self._refresh_button)
         layout.addLayout(filter_layout)
-        layout.addWidget(self._layer_list_widget)
+        layout.addWidget(self._layer_scroll_area)
         layout.addWidget(self._import_selection_button)
+        layout.addLayout(group_label_layout)
         layout.addWidget(self._auto_map_button)
         layout.addLayout(output_layout)
+        layout.addWidget(self._output_status_label)
+        layout.addLayout(mode_layout)
         layout.addWidget(self._overwrite_checkbox)
         layout.addWidget(self._allow_unresolved_checkbox)
         layout.addWidget(self._manifest_checkbox)
@@ -130,6 +157,7 @@ class DockerWindow(QWidget):
         self.layer_manager = layer_manager
         self.sync_map_store = sync_map_store
         self.selection_model.rebuild(layer_manager, sync_map_store)
+        self._sync_output_dir_with_document()
         self._render_layer_rows()
         self._update_labels()
 
@@ -169,6 +197,7 @@ class DockerWindow(QWidget):
             self.layer_manager = layer_manager
             self.sync_map_store = SyncMapStore(document)
             self.selection_model.rebuild(layer_manager, self.sync_map_store)
+            self._sync_output_dir_with_document()
             self._status_label.setText("Active document loaded.")
             self._render_layer_rows()
             self._update_labels()
@@ -183,7 +212,9 @@ class DockerWindow(QWidget):
             self._output_dir.text(),
         )
         if selected:
+            self._output_dir_user_set = True
             self._output_dir.setText(selected)
+            self._output_status_label.setText("Output folder manually selected.")
 
     def import_current_selection(self) -> None:
         """Explicitly import current Krita selection into docker-owned selection."""
@@ -206,8 +237,16 @@ class DockerWindow(QWidget):
             self._show_error("No docker-selected layers to auto map.")
             return
 
+        manual_label = self._group_label.text().strip()
+        if not manual_label:
+            self._show_error("Please enter a group label before auto mapping.")
+            return
+
         try:
-            result = AutoMappingService(self.layer_manager, self.sync_map_store).auto_map(layers)
+            result = AutoMappingService(self.layer_manager, self.sync_map_store).auto_map(
+                layers,
+                manual_label=manual_label,
+            )
             self.sync_map_store.load()
             self.selection_model.rebuild(self.layer_manager, self.sync_map_store)
             self._render_layer_rows()
@@ -320,15 +359,36 @@ class DockerWindow(QWidget):
             if layer.id_string in selected
         ]
 
+    def _sync_output_dir_with_document(self) -> None:
+        if self._output_dir_user_set:
+            return
+
+        filename = str(getattr(self.document, "filename", "") or "")
+        if filename:
+            folder = Path(filename).parent / "krita_ai_metadata_export"
+            self._output_dir.setText(str(folder))
+            self._output_status_label.setText("Output folder synced to saved .kra location.")
+            return
+
+        fallback = Path.home() / "krita_ai_metadata_export"
+        self._output_dir.setText(str(fallback))
+        self._output_status_label.setText("Document is unsaved. Using home export folder.")
+
     def _current_options(self):
         return self.selection_model.to_export_options(
             output_dir=self._output_dir.text() or ".",
-            mode=ExportMode.selected,
+            mode=self._current_export_mode(),
             overwrite=self._overwrite_checkbox.isChecked(),
             allow_unresolved=self._allow_unresolved_checkbox.isChecked(),
             write_manifest=self._manifest_checkbox.isChecked(),
             include_invisible_targets=self._include_invisible_checkbox.isChecked(),
         )
+
+    def _current_export_mode(self) -> ExportMode:
+        mode = self._mode_combo.currentData()
+        if isinstance(mode, ExportMode):
+            return mode
+        return ExportMode(str(mode))
 
     def _row_label(self, row) -> str:
         kind = "Group" if row.is_group else "Layer"

@@ -39,6 +39,8 @@ def test_metadata_resolver_builds_sidecar_payload():
             "group_name": "[0001] - job - seed",
             "job_id": "job-id",
             "job_id_short": "job-id",
+            "manual_label": "castle-test-A",
+            "sync_index": 1,
             "image_index": 0,
             "seed": 123,
             "params_snapshot": {
@@ -69,6 +71,8 @@ def test_metadata_resolver_builds_sidecar_payload():
     assert "cat" in metadata.a1111_parameters
     assert metadata.payload["key"] == "0001-job-seed"
     assert metadata.payload["seed"] == 123
+    assert metadata.payload["manual_label"] == "castle-test-A"
+    assert metadata.payload["sync_index"] == 1
     assert metadata.payload["layer_ids"] == ["{layer-1}"]
     assert metadata.payload["metadata_inherited"] is False
 

@@ -37,6 +37,12 @@ class FakeStore:
         self.group_records = {}
         self.applied = []
         self.loaded = 0
+        self.next_sync_index = 1
+
+    def allocate_sync_index(self) -> int:
+        value = self.next_sync_index
+        self.next_sync_index += 1
+        return value
 
     def resolve_layer(self, layer_id: str):
         return self.layer_records.get(layer_id)
@@ -91,6 +97,7 @@ def make_record(target_type: str = "layer", group_id=None, group_name=None) -> S
         group_name=group_name,
         job_id_short="job-1234",
         sync_index=7,
+        manual_label="castle-test-A",
     )
 
 
@@ -102,13 +109,14 @@ def test_layer_record_is_converted_to_group_record() -> None:
     mover = FakeMover()
     service = AutoMappingService(manager, store, mover=mover)
 
-    result = service.auto_map([layer])
+    result = service.auto_map([layer], manual_label="castle-test-A")
 
     assert result.mapped_count == 1
     assert result.records[0].target_type == "group"
     assert result.records[0].group_id == "group-layer-1"
-    assert result.records[0].group_name == "Layer Metadata Group"
-    assert result.records[0].export_key == "export-key"
+    assert result.records[0].group_name == "[0007] - castle-test-A - img2"
+    assert result.records[0].export_key == "0007-castle-test-A-img2"
+    assert result.records[0].manual_label == "castle-test-A"
     assert store.applied == result.records
     assert store.loaded >= 2
     assert manager.updated >= 2
@@ -133,10 +141,12 @@ def test_unsynced_layer_uses_job_history_snapshot() -> None:
         mover=FakeMover(),
     )
 
-    result = service.auto_map([layer])
+    result = service.auto_map([layer], manual_label="castle-test-A")
 
     assert result.mapped_count == 1
-    assert result.records[0].export_key == "Layer"
+    assert result.records[0].export_key == "0001-castle-test-A-img3"
+    assert result.records[0].group_name == "[0001] - castle-test-A - img3"
+    assert result.records[0].manual_label == "castle-test-A"
     assert result.records[0].job_id == "job-abcdef"
     assert result.records[0].image_index == 3
     assert result.records[0].seed == 123
@@ -151,7 +161,7 @@ def test_existing_parent_group_record_is_inherited_without_write() -> None:
     store.group_records["group-1"] = inherited_record
     service = AutoMappingService(FakeLayerManager(), store, mover=FakeMover())
 
-    result = service.auto_map([layer])
+    result = service.auto_map([layer], manual_label="castle-test-A")
 
     assert result.records == [inherited_record]
     assert result.warnings == ["Layer 'Layer' already inherits metadata from group 'Parent Group'."]
@@ -170,7 +180,7 @@ def test_ambiguous_layer_and_parent_records_warns_and_skips() -> None:
     )
     service = AutoMappingService(FakeLayerManager(), store, mover=FakeMover())
 
-    result = service.auto_map([layer])
+    result = service.auto_map([layer], manual_label="castle-test-A")
 
     assert result.records == []
     assert result.warnings == [
@@ -185,6 +195,24 @@ def test_repair_uses_auto_map_path() -> None:
     store.layer_records["layer-1"] = make_record()
     service = AutoMappingService(FakeLayerManager(), store, mover=FakeMover())
 
-    result = service.repair([layer])
+    result = service.repair([layer], manual_label="castle-test-A")
 
     assert result.mapped_count == 1
+
+
+def test_empty_manual_label_blocks_auto_mapping() -> None:
+    layer = FakeLayer("layer-1", "Layer")
+    store = FakeStore()
+    resolver = FakeJobHistoryResolver({"seed": 123, "prompt": "snapshot"})
+    service = AutoMappingService(
+        FakeLayerManager(),
+        store,
+        job_history_resolver=resolver,
+        mover=FakeMover(),
+    )
+
+    result = service.auto_map([layer], manual_label="")
+
+    assert result.records == []
+    assert result.warnings == ["Please enter a group label before auto mapping."]
+    assert store.applied == []

@@ -26,6 +26,7 @@ class SyncRecord:
     group_name: str | None = None
     job_id_short: str = ""
     sync_index: int = 0
+    manual_label: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -44,6 +45,7 @@ class SyncRecord:
             group_name=data.get("group_name"),
             job_id_short=data.get("job_id_short", ""),
             sync_index=int(data.get("sync_index", 0)),
+            manual_label=data.get("manual_label", ""),
         )
 
 

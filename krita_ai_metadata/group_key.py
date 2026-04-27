@@ -18,17 +18,26 @@ class GroupKey:
     group_name: str
     key: str
     job_id_short: str
+    manual_label: str
 
 
 class GroupKeyResolver:
     def __init__(self, job_id_length: int = 8) -> None:
         self.job_id_length = job_id_length
 
-    def resolve(self, sync_index: int, job_id: str | None, image_index: int, seed: int | None) -> GroupKey:
-        safe_job_id = job_id or "unknown"
+    def resolve(
+        self,
+        sync_index: int,
+        manual_label: str | None = None,
+        image_index: int = 0,
+        job_id: str | None = None,
+        seed: int | None = None,
+    ) -> GroupKey:
+        label = self.clean_label(manual_label)
+        safe_job_id = str(job_id or "").strip()
         job_id_short = self.short_job_id(safe_job_id)
         safe_seed = int(seed or 0)
-        group_name = f"[{sync_index:04d}] - {job_id_short} - {safe_seed}"
+        group_name = f"[{sync_index:04d}] - {label}"
         if image_index:
             group_name = f"{group_name} - img{image_index}"
         key = self.sanitize(group_name)
@@ -40,12 +49,17 @@ class GroupKeyResolver:
             group_name=group_name,
             key=key,
             job_id_short=job_id_short,
+            manual_label=label,
         )
 
+    def clean_label(self, label: str | None) -> str:
+        cleaned = str(label or "").strip()
+        return cleaned or "untitled"
+
     def short_job_id(self, job_id: str) -> str:
-        cleaned = str(job_id).strip()
+        cleaned = str(job_id or "").strip()
         if not cleaned:
-            return "unknown"
+            return ""
         return cleaned[: self.job_id_length]
 
     def sanitize(self, value: str) -> str:

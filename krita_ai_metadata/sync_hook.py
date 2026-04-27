@@ -64,7 +64,13 @@ class SyncHookAdapter:
         document = model.document
         store = SyncMapStore(document)
         sync_index = store.allocate_sync_index()
-        key = self.key_resolver.resolve(sync_index, job.id, index, job.params.seed)
+        key = self.key_resolver.resolve(
+            sync_index=sync_index,
+            manual_label=job.id,
+            image_index=index,
+            job_id=job.id,
+            seed=job.params.seed,
+        )
         target_layers = [layer for layer in after_layers if layer.id_string in new_ids]
 
         group_layer = None
@@ -97,6 +103,7 @@ class SyncHookAdapter:
             params_snapshot=self.serializer.serialize_job_params(job.params),
             job_id_short=key.job_id_short,
             sync_index=sync_index,
+            manual_label=key.manual_label,
         )
         store.record_apply(record)
         return result

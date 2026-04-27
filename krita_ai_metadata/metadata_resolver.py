@@ -99,6 +99,8 @@ class MetadataResolver:
             "layer_ids": list(record.get("layer_ids", [target.layer.id_string])),
             "job_id": record.get("job_id", ""),
             "job_id_short": record.get("job_id_short", ""),
+            "manual_label": record.get("manual_label", ""),
+            "sync_index": int(record.get("sync_index", 0) or 0),
             "image_index": int(record.get("image_index", 0) or 0),
             "seed": int(record.get("seed", 0) or 0),
             "params_snapshot": dict(record.get("params_snapshot", {})),

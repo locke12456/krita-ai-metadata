@@ -29,7 +29,10 @@ def _register_krita_plugin() -> None:
         app.addExtension(KritaAIMetadataExtension(app))
 
     if hasattr(app, "addDockWidgetFactory"):
-        from .docker import KritaAIMetadataExportDocker
+        try:
+            from .docker import KritaAIMetadataExportDocker
+        except Exception:
+            return
 
         app.addDockWidgetFactory(
             DockWidgetFactory(
