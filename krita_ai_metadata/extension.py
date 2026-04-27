@@ -26,6 +26,13 @@ class KritaAIMetadataExtension(Extension):
         )
         export_action.triggered.connect(self.export_metadata)
 
+        debug_action = window.createAction(
+            "krita_ai_metadata_debug_probe",
+            "AI Metadata Export Debug Probe",
+            "tools/scripts",
+        )
+        debug_action.triggered.connect(self.debug_probe)
+
     def add_metadata_group(self):
         try:
             from .group_sync_action import MetadataGroupAction
@@ -41,6 +48,9 @@ class KritaAIMetadataExtension(Extension):
             ExportAction().run_from_krita()
         except Exception as exc:
             self._show_error(f"Export failed: {exc}")
+
+    def debug_probe(self):
+        self._show_error("Krita AI Metadata Export plugin is loaded.")
 
     def _show_error(self, message: str):
         try:

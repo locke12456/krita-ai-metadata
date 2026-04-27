@@ -42,11 +42,15 @@ class ExportReport:
 
 
 class ExportDialog:
-    """Batch export coordinator for UI and command-style callers.
+    """Batch export coordinator for Tools/Scripts fallback callers.
 
     This class intentionally keeps UI state separate from the export pipeline.
     A real Qt dialog can collect ExportDialogConfig, then call run() to execute
     the same scanner, resolver, render, and writer path used by probes.
+
+    Docker explicit selected_layer_ids are intentionally not carried through
+    ExportDialogConfig. The docker path passes that state through
+    DockerExportRunner and ExportTargetScanner.scan_selected_ids().
     """
 
     def __init__(

@@ -38,58 +38,110 @@ class ExportTargetScanner:
 
     def __init__(self, view_adapter: KritaViewAdapter | None = None):
         self._view_adapter = view_adapter or KritaViewAdapter()
+        self.last_warnings: list[str] = []
 
     def scan(
         self,
         layer_manager: LayerManager,
         sync_map_store: Any,
         mode: ExportMode = ExportMode.selected,
+        include_invisible_targets: bool = False,
     ) -> list[ExportTarget]:
         """Return export targets for the requested mode."""
+        self.last_warnings = []
         targets: list[ExportTarget] = []
 
-        for layer in self._candidate_layers(layer_manager, mode):
+        for layer in self._candidate_layers(layer_manager, mode, include_invisible_targets):
             if not self._is_exportable_layer(layer):
                 continue
 
-            record, inherited_from = self._resolve_record(layer, sync_map_store)
-            target_type = self._target_type(layer, record)
-            key = self._target_key(layer, record)
-            warnings: list[str] = []
-
-            if inherited_from:
-                warnings.append(
-                    f"Metadata for layer '{layer.name}' inherited from parent group '{inherited_from}'."
-                )
-
-            if record is None:
-                warnings.append(f"No sync metadata found for layer '{layer.name}'.")
-
-            targets.append(
-                ExportTarget(
-                    layer=layer,
-                    target_type=target_type,
-                    key=key,
-                    record=record,
-                    warnings=warnings,
-                )
-            )
+            targets.append(self._target_from_layer(layer, sync_map_store))
 
         return targets
 
-    def _candidate_layers(self, layer_manager: LayerManager, mode: ExportMode) -> list[Layer]:
+    def scan_selected_ids(
+        self,
+        layer_manager: LayerManager,
+        sync_map_store: Any,
+        selected_layer_ids: list[str],
+        include_invisible_targets: bool = False,
+    ) -> list[ExportTarget]:
+        """Return export targets for explicit docker-selected layer IDs."""
+        self.last_warnings = []
+        selected = {layer_id for layer_id in selected_layer_ids if layer_id}
+        targets: list[ExportTarget] = []
+
+        for layer in layer_manager.all:
+            if layer.id_string not in selected:
+                continue
+
+            warnings: list[str] = []
+            if not layer.is_visible and not include_invisible_targets:
+                warning = f"Hidden selected target '{layer.name}' was skipped."
+                warnings.append(warning)
+                self.last_warnings.append(warning)
+                continue
+
+            if not self._is_exportable_layer(layer):
+                continue
+
+            targets.append(self._target_from_layer(layer, sync_map_store, warnings))
+
+        return targets
+
+    def _candidate_layers(
+        self,
+        layer_manager: LayerManager,
+        mode: ExportMode,
+        include_invisible_targets: bool = False,
+    ) -> list[Layer]:
         """Return candidate layers for one export mode."""
         if mode == ExportMode.selected:
             selected = self._view_adapter.unique_selected_layers(layer_manager)
             if selected:
-                return selected
-            return [layer_manager.active]
+                layers = selected
+            else:
+                layers = [layer_manager.active]
+            if include_invisible_targets:
+                return layers
+            return [layer for layer in layers if layer.is_visible]
 
         layers = list(layer_manager.all)
         if mode == ExportMode.visible:
             return [layer for layer in layers if layer.is_visible]
 
-        return layers
+        if include_invisible_targets:
+            return layers
+
+        return [layer for layer in layers if layer.is_visible]
+
+    def _target_from_layer(
+        self,
+        layer: Layer,
+        sync_map_store: Any,
+        warnings: list[str] | None = None,
+    ) -> ExportTarget:
+        """Build one export target from a layer and sync-map store."""
+        record, inherited_from = self._resolve_record(layer, sync_map_store)
+        target_type = self._target_type(layer, record)
+        key = self._target_key(layer, record)
+        target_warnings = list(warnings or [])
+
+        if inherited_from:
+            target_warnings.append(
+                f"Metadata for layer '{layer.name}' inherited from parent group '{inherited_from}'."
+            )
+
+        if record is None:
+            target_warnings.append(f"No sync metadata found for layer '{layer.name}'.")
+
+        return ExportTarget(
+            layer=layer,
+            target_type=target_type,
+            key=key,
+            record=record,
+            warnings=target_warnings,
+        )
 
     def _resolve_record(
         self,
@@ -99,37 +151,21 @@ class ExportTargetScanner:
         """Resolve sync metadata and report when metadata is inherited from a parent group."""
         layer_id = layer.id_string
 
-        record = self._call_optional(sync_map_store, "resolve_layer", layer_id)
+        record = self._normalize_record(sync_map_store.resolve_layer(layer_id))
         if record is not None:
             return record, None
 
-        record = self._call_optional(sync_map_store, "resolve_group_id", layer_id)
-        if record is not None:
-            return record, None
-
-        record = self._call_optional(sync_map_store, "resolve_group_name", layer.name)
-        if record is not None:
-            return record, None
-
-        record = self._lookup_map(sync_map_store, "records_by_layer_id", layer_id)
-        if record is not None:
-            return record, None
-
-        record = self._lookup_map(sync_map_store, "records_by_group_id", layer_id)
-        if record is not None:
-            return record, None
-
-        record = self._lookup_map(sync_map_store, "records_by_group_name", layer.name)
+        record = self._normalize_record(
+            sync_map_store.resolve_group(group_id=layer_id, group_name=layer.name)
+        )
         if record is not None:
             return record, None
 
         parent = layer.parent_layer
         if parent is not None:
-            parent_record = self._lookup_map(sync_map_store, "records_by_group_id", parent.id_string)
-            if parent_record is not None:
-                return parent_record, parent.name
-
-            parent_record = self._lookup_map(sync_map_store, "records_by_group_name", parent.name)
+            parent_record = self._normalize_record(
+                sync_map_store.resolve_group(group_id=parent.id_string, group_name=parent.name)
+            )
             if parent_record is not None:
                 return parent_record, parent.name
 

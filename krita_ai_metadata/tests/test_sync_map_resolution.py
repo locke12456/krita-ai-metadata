@@ -45,6 +45,13 @@ class FakeSyncMapStore:
     def resolve_layer(self, layer_id: str):
         return self.records_by_layer_id.get(layer_id)
 
+    def resolve_group(self, group_id: str | None = None, group_name: str | None = None):
+        if group_id and group_id in self.records_by_group_id:
+            return self.records_by_group_id[group_id]
+        if group_name and group_name in self.records_by_group_name:
+            return self.records_by_group_name[group_name]
+        return None
+
 
 def test_scanner_resolves_layer_record_by_layer_id():
     layer = FakeLayer(id_string="{layer-1}", name="Layer 1")
