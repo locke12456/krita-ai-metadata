@@ -137,10 +137,14 @@ def run_probe(output_dir: str | Path | None = None, parameters: str = DEFAULT_PA
 
 def run_from_krita() -> None:
     result = run_probe()
-    Krita.instance().activeWindow().showMessage(
-        f"Krita export probe wrote {result['png']} metadata={result['metadata_readback_ok']}",
-        5000,
-    )
+    message = f"Krita export probe wrote {result['png']} metadata={result['metadata_readback_ok']}"
+
+    try:
+        from PyQt5.QtWidgets import QMessageBox
+
+        QMessageBox.information(None, "Krita AI Metadata Export", message)
+    except Exception:
+        print(f"[krita_ai_metadata] {message}")
 
 
 if __name__ == "__main__":

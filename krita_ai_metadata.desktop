@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Service
+ServiceTypes=Krita/PythonPlugin
+X-KDE-Library=krita_ai_metadata
+X-Python-2-Compatible=false
+Name=Krita AI Metadata Export
+Comment=Export Krita AI Diffusion layer/group metadata to PNG and JSON
