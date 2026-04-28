@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import krita
 from krita import DockWidget
-from PyQt5.QtWidgets import QWidget
 
 from .ui.docker_window import DockerWindow
 

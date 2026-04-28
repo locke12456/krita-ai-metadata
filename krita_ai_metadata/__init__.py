@@ -10,8 +10,6 @@ except Exception:  # pragma: no cover - exercised by local test stubs
     DockWidgetFactoryBase = None
     Krita = None
 
-from .extension import KritaAIMetadataExtension
-
 
 def _register_krita_plugin() -> None:
     if Krita is None or DockWidgetFactory is None or DockWidgetFactoryBase is None:
@@ -26,7 +24,13 @@ def _register_krita_plugin() -> None:
         return
 
     if hasattr(app, "addExtension"):
-        app.addExtension(KritaAIMetadataExtension(app))
+        try:
+            from .extension import KritaAIMetadataExtension
+        except Exception:
+            KritaAIMetadataExtension = None
+
+        if KritaAIMetadataExtension is not None:
+            app.addExtension(KritaAIMetadataExtension(app))
 
     if hasattr(app, "addDockWidgetFactory"):
         try:

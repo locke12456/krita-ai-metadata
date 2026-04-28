@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
-from PyQt5.QtWidgets import QFileDialog, QMessageBox
-
-from ai_diffusion.document import KritaDocument
-
+from .ai_diffusion_compat import active_document
 from .export_target_scanner import ExportMode
+from .qt_compat import QFileDialog, QMessageBox
 from .job_history_resolver import JobHistoryResolver
 from .sync_map_store import SyncMapStore
 from .ui.export_dialog import ExportDialog, ExportDialogConfig
@@ -14,7 +13,7 @@ from .ui.export_dialog import ExportDialog, ExportDialogConfig
 
 class ExportAction:
     def run_from_krita(self) -> None:
-        document = KritaDocument.active()
+        document = active_document()
         if document is None:
             QMessageBox.warning(None, "Krita AI Metadata Export", "No active Krita document.")
             return
@@ -62,7 +61,7 @@ class ExportAction:
             message += "\n\nWarnings:\n" + "\n".join(report.warnings[:8])
         QMessageBox.information(None, "Krita AI Metadata Export", message)
 
-    def _repair_empty_selected_records(self, document: KritaDocument, store: SyncMapStore) -> None:
+    def _repair_empty_selected_records(self, document: Any, store: SyncMapStore) -> None:
         resolver = JobHistoryResolver()
         changed = False
 
@@ -86,7 +85,7 @@ class ExportAction:
             store.save()
             store.load()
 
-    def _default_output_dir(self, document: KritaDocument) -> str:
+    def _default_output_dir(self, document: Any) -> str:
         if document.filename:
             return str(Path(document.filename).parent / "krita_ai_metadata_export")
         return str(Path.home() / "krita_ai_metadata_export")

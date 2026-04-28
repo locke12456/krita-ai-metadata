@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from PyQt5.QtWidgets import QMessageBox
 from krita import Extension
+
+from .qt_compat import QMessageBox
 
 
 class KritaAIMetadataExtension(Extension):

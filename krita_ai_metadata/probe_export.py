@@ -5,11 +5,10 @@ from pathlib import Path
 from typing import Any
 
 from krita import Krita
-from PyQt5.QtCore import QByteArray
 
-from ai_diffusion.document import KritaDocument
-from ai_diffusion.image import Bounds, Image
-from ai_diffusion.layer import Layer, LayerManager, LayerType
+from .ai_diffusion_compat import active_document as ai_active_document
+from .ai_diffusion_compat import is_group_layer, is_image_layer, make_bounds
+from .qt_compat import QMessageBox
 
 
 DEFAULT_PARAMETERS = (
@@ -30,8 +29,8 @@ def active_output_dir() -> Path:
     return output_dir
 
 
-def active_document() -> KritaDocument:
-    document = KritaDocument.active()
+def active_document() -> Any:
+    document = ai_active_document()
     if document is None:
         raise RuntimeError("No active Krita document")
     ok, message = document.check_color_mode()
@@ -51,7 +50,7 @@ def selected_nodes() -> list[Any]:
     return list(nodes or [])
 
 
-def selected_layers(layer_manager: LayerManager) -> list[Layer]:
+def selected_layers(layer_manager: Any) -> list[Any]:
     layers: list[Layer] = []
     for node in selected_nodes():
         try:
@@ -61,7 +60,7 @@ def selected_layers(layer_manager: LayerManager) -> list[Layer]:
     return layers
 
 
-def first_export_layer(layer_manager: LayerManager) -> Layer:
+def first_export_layer(layer_manager: Any) -> Any:
     selected = selected_layers(layer_manager)
     if selected:
         return selected[0]
@@ -69,12 +68,12 @@ def first_export_layer(layer_manager: LayerManager) -> Layer:
     if active is not None:
         return active
     for layer in layer_manager.all:
-        if layer.type is LayerType.group or layer.type.is_image:
+        if is_group_layer(layer) or is_image_layer(layer):
             return layer
     raise RuntimeError("No exportable layer found")
 
 
-def export_bounds(layer: Layer, fallback: Bounds) -> Bounds:
+def export_bounds(layer: Any, fallback: Any) -> Any:
     bounds = layer.bounds
     if bounds.is_zero:
         return fallback
@@ -101,8 +100,8 @@ def write_sidecar(path: Path, payload: dict[str, Any]) -> None:
 def run_probe(output_dir: str | Path | None = None, parameters: str = DEFAULT_PARAMETERS) -> dict[str, Any]:
     document = active_document()
     target = first_export_layer(document.layers)
-    bounds = export_bounds(target, Bounds(0, 0, *document.extent))
-    image: Image = target.get_pixels(bounds)
+    bounds = export_bounds(target, make_bounds(0, 0, *document.extent))
+    image = target.get_pixels(bounds)
 
     output = Path(output_dir) if output_dir is not None else active_output_dir()
     output.mkdir(parents=True, exist_ok=True)
@@ -140,8 +139,6 @@ def run_from_krita() -> None:
     message = f"Krita export probe wrote {result['png']} metadata={result['metadata_readback_ok']}"
 
     try:
-        from PyQt5.QtWidgets import QMessageBox
-
         QMessageBox.information(None, "Krita AI Metadata Export", message)
     except Exception:
         print(f"[krita_ai_metadata] {message}")

@@ -3,7 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from PyQt5.QtWidgets import (
+from ..ai_diffusion_compat import active_model
+from ..auto_mapping import AutoMappingService
+from ..capabilities import build_feature_flags
+from ..qt_compat import (
     QCheckBox,
     QComboBox,
     QFileDialog,
@@ -15,10 +18,6 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-
-from ai_diffusion.root import root
-
-from ..auto_mapping import AutoMappingService
 from ..docker_export_runner import DockerExportRunner
 from ..export_target_scanner import ExportMode
 from ..layer_selection_model import LayerSelectionModel
@@ -35,8 +34,10 @@ class DockerWindow(QWidget):
         self.layer_manager: Any | None = None
         self.sync_map_store: Any | None = None
         self.document: Any | None = None
+        self.feature_flags = build_feature_flags()
         self._layer_checks: dict[str, QCheckBox] = {}
 
+        self._mode_label = QLabel(self.feature_flags.mode_label, self)
         self._status_label = QLabel("No active document.", self)
         self._selection_label = QLabel("Selected layers: 0", self)
         self._output_status_label = QLabel("", self)
@@ -127,6 +128,7 @@ class DockerWindow(QWidget):
         group_label_layout.addWidget(self._group_label)
 
         layout = QVBoxLayout()
+        layout.addWidget(self._mode_label)
         layout.addWidget(self._status_label)
         layout.addWidget(self._error_label)
         layout.addWidget(self._selection_label)
@@ -169,8 +171,14 @@ class DockerWindow(QWidget):
         """Refresh active document, layer rows, and sync-map state."""
         self._clear_error()
 
+        self.feature_flags = build_feature_flags()
+        self._mode_label.setText(self.feature_flags.mode_label)
+        self._auto_map_button.setEnabled(self.feature_flags.prompt_search_enabled)
+        self._preview_button.setEnabled(self.feature_flags.basic_export_enabled)
+        self._export_button.setEnabled(self.feature_flags.basic_export_enabled)
+
         try:
-            model = root.model_for_active_document()
+            model = active_model()
         except Exception as exc:
             self._show_error(f"Unable to read active document: {exc}")
             return
@@ -199,6 +207,8 @@ class DockerWindow(QWidget):
             self.selection_model.rebuild(layer_manager, self.sync_map_store)
             self._sync_output_dir_with_document()
             self._status_label.setText("Active document loaded.")
+            if self.feature_flags.mode_warning:
+                self._append_report(self.feature_flags.mode_warning)
             self._render_layer_rows()
             self._update_labels()
         except Exception as exc:
@@ -230,6 +240,10 @@ class DockerWindow(QWidget):
         """Run headless auto mapping for selected rows, then refresh preview state."""
         if self.layer_manager is None or self.sync_map_store is None:
             self._show_error("Auto mapping requires layer manager and sync map context.")
+            return
+
+        if not self.feature_flags.prompt_search_enabled:
+            self._show_error(self.feature_flags.mode_warning or "Prompt search is disabled.")
             return
 
         layers = self._selected_layers()

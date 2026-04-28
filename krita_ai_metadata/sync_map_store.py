@@ -4,9 +4,7 @@ import json
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from PyQt5.QtCore import QByteArray
-
-from ai_diffusion.document import Document
+from .qt_compat import QByteArray
 
 
 ANNOTATION_KEY = "krita_export_sync_map.json"
@@ -59,7 +57,7 @@ class SyncMapData:
 
 
 class SyncMapStore:
-    def __init__(self, document: Document, annotation_key: str = ANNOTATION_KEY) -> None:
+    def __init__(self, document: Any, annotation_key: str = ANNOTATION_KEY) -> None:
         self.document = document
         self.annotation_key = annotation_key
         self.data = SyncMapData()

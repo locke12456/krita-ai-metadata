@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
-from PyQt5.QtWidgets import QInputDialog, QMessageBox
-
-from ai_diffusion.document import KritaDocument
-from ai_diffusion.layer import Layer, LayerType
-
+from .ai_diffusion_compat import active_document, is_group_layer, refresh_projection
 from .group_key import GroupKeyResolver
+from .qt_compat import QInputDialog, QMessageBox
 from .job_history_resolver import JobHistoryResolver
 from .krita_view_adapter import KritaViewAdapter
 from .layer_move_adapter import LayerMoveAdapter
@@ -28,7 +26,7 @@ class MetadataGroupAction:
         self.job_resolver = JobHistoryResolver()
 
     def run_from_krita(self) -> AddGroupResult | None:
-        document = KritaDocument.active()
+        document = active_document()
         if document is None:
             QMessageBox.warning(None, "Krita AI Metadata", "No active Krita document.")
             return None
@@ -67,7 +65,7 @@ class MetadataGroupAction:
         mover = LayerMoveAdapter(document.layers)
 
         first = layers[0]
-        if first.type is LayerType.group:
+        if is_group_layer(first):
             group = first
             group.name = group_name
         else:
@@ -80,10 +78,7 @@ class MetadataGroupAction:
 
         document.layers.update()
         group.refresh()
-        try:
-            document._doc.refreshProjection()
-        except Exception:
-            pass
+        refresh_projection(document)
 
         children = group.child_layers
         child_ids = [child.id_string for child in children]
@@ -110,14 +105,14 @@ class MetadataGroupAction:
         )
         return AddGroupResult(group.name, export_key, len(child_ids))
 
-    def _selected_or_active_layers(self, document: KritaDocument) -> list[Layer]:
+    def _selected_or_active_layers(self, document: Any) -> list[Any]:
         selected = self.view_adapter.unique_selected_layers(document.layers)
         if selected:
             return selected
         active = document.layers.active
         return [active] if active is not None else []
 
-    def _filter_top_level_selection(self, layers: list[Layer]) -> list[Layer]:
+    def _filter_top_level_selection(self, layers: list[Any]) -> list[Any]:
         selected_ids = {layer.id_string for layer in layers}
         result: list[Layer] = []
         for layer in layers:
