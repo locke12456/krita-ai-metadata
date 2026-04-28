@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-import krita
-
-from ai_diffusion.layer import Layer, LayerManager
+from .krita_core_adapter import selected_krita_nodes
 
 
 class KritaViewAdapter:
@@ -16,48 +14,29 @@ class KritaViewAdapter:
     """
 
     def active_view(self) -> Any | None:
-        """Return the current Krita active view, or None when unavailable."""
-        app = krita.Krita.instance()
-        if app is None:
-            return None
-
-        window = app.activeWindow()
-        if window is None:
-            return None
-
-        view = window.activeView()
-        if view is None:
-            return None
-
-        return view
+        """Active view access is owned by krita_core_adapter.py."""
+        return None
 
     def selected_nodes(self) -> list[Any]:
-        """Return selected Krita nodes from the active view."""
-        view = self.active_view()
-        if view is None:
-            return []
+        """Return selected Krita node references from the core adapter."""
+        return list(selected_krita_nodes())
 
-        nodes = view.selectedNodes()
-        if nodes is None:
-            return []
-
-        return list(nodes)
-
-    def selected_layers(self, layer_manager: LayerManager) -> list[Layer]:
-        """Wrap selected Krita nodes as Layer objects."""
-        layers: list[Layer] = []
-        for node in self.selected_nodes():
-            if node is None:
+    def selected_layers(self, layer_manager: Any) -> list[Any]:
+        """Wrap selected Krita nodes as layer-manager objects when possible."""
+        layers: list[Any] = []
+        for node_ref in self.selected_nodes():
+            if node_ref is None:
                 continue
+            raw_node = getattr(node_ref, "node", node_ref)
             try:
-                layers.append(layer_manager.wrap(node))
+                layers.append(layer_manager.wrap(raw_node))
             except Exception:
                 continue
         return layers
 
-    def unique_selected_layers(self, layer_manager: LayerManager) -> list[Layer]:
+    def unique_selected_layers(self, layer_manager: Any) -> list[Any]:
         """Return selected layers without duplicate node IDs."""
-        unique: list[Layer] = []
+        unique: list[Any] = []
         seen_ids: set[str] = set()
 
         for layer in self.selected_layers(layer_manager):

@@ -4,10 +4,9 @@ import json
 from pathlib import Path
 from typing import Any
 
-from krita import Krita
-
 from .ai_diffusion_compat import active_document as ai_active_document
 from .ai_diffusion_compat import is_group_layer, is_image_layer, make_bounds
+from .krita_core_adapter import active_krita_document, render_node_projection, selected_krita_nodes
 from .qt_compat import QMessageBox
 
 
@@ -19,9 +18,9 @@ DEFAULT_PARAMETERS = (
 
 
 def active_output_dir() -> Path:
-    doc = Krita.instance().activeDocument()
-    if doc and doc.fileName():
-        base = Path(doc.fileName()).parent
+    doc = active_krita_document()
+    if doc and doc.filename:
+        base = Path(doc.filename).parent
     else:
         base = Path.home()
     output_dir = base / "krita_export_probe"
@@ -30,7 +29,12 @@ def active_output_dir() -> Path:
 
 
 def active_document() -> Any:
-    document = ai_active_document()
+    try:
+        document = ai_active_document()
+    except Exception:
+        document = None
+    if document is None:
+        document = active_krita_document()
     if document is None:
         raise RuntimeError("No active Krita document")
     ok, message = document.check_color_mode()
@@ -40,21 +44,15 @@ def active_document() -> Any:
 
 
 def selected_nodes() -> list[Any]:
-    window = Krita.instance().activeWindow()
-    if window is None:
-        return []
-    view = window.activeView()
-    if view is None:
-        return []
-    nodes = view.selectedNodes()
-    return list(nodes or [])
+    return list(selected_krita_nodes())
 
 
 def selected_layers(layer_manager: Any) -> list[Any]:
-    layers: list[Layer] = []
-    for node in selected_nodes():
+    layers: list[Any] = []
+    for node_ref in selected_nodes():
+        raw_node = getattr(node_ref, "node", node_ref)
         try:
-            layers.append(layer_manager.wrap(node))
+            layers.append(layer_manager.wrap(raw_node))
         except Exception:
             continue
     return layers
@@ -99,9 +97,18 @@ def write_sidecar(path: Path, payload: dict[str, Any]) -> None:
 
 def run_probe(output_dir: str | Path | None = None, parameters: str = DEFAULT_PARAMETERS) -> dict[str, Any]:
     document = active_document()
-    target = first_export_layer(document.layers)
-    bounds = export_bounds(target, make_bounds(0, 0, *document.extent))
-    image = target.get_pixels(bounds)
+
+    if hasattr(document, "layers"):
+        target = first_export_layer(document.layers)
+        bounds = export_bounds(target, make_bounds(0, 0, *document.extent))
+        image = target.get_pixels(bounds)
+    else:
+        selected = selected_nodes()
+        if not selected:
+            raise RuntimeError("No selected Krita node")
+        target = selected[0]
+        bounds = target.bounds
+        image = render_node_projection(target, bounds)
 
     output = Path(output_dir) if output_dir is not None else active_output_dir()
     output.mkdir(parents=True, exist_ok=True)
@@ -112,13 +119,14 @@ def run_probe(output_dir: str | Path | None = None, parameters: str = DEFAULT_PA
 
     image.save_png_with_metadata(png_path, parameters)
     embedded = read_parameters_from_png(png_path)
+    target_type = getattr(target, "type", "")
 
     payload = {
         "version": 1,
         "key": key,
         "target_name": target.name,
         "target_id": target.id_string,
-        "target_type": target.type.value,
+        "target_type": str(getattr(target_type, "value", target_type)),
         "bounds": [bounds.x, bounds.y, bounds.width, bounds.height],
         "png_path": str(png_path),
         "a1111_parameters": parameters,

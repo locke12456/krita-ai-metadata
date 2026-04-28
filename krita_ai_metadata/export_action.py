@@ -44,7 +44,6 @@ class ExportAction:
         if feature_flags.prompt_search_enabled and not manual_only:
             self._repair_empty_selected_records(document, store)
 
-        layer_manager = document.layers
         if manual_only:
             nodes = selected_krita_nodes()
             layer_manager = type(
@@ -56,12 +55,14 @@ class ExportAction:
                     "update": lambda self: document.refresh_projection(),
                 },
             )()
+        else:
+            layer_manager = document.layers
 
         config = ExportDialogConfig(
             output_dir=Path(output_dir),
             mode=ExportMode.selected,
             overwrite=False,
-            allow_unresolved=False,
+            allow_unresolved=manual_only,
             write_manifest=True,
         )
         report = ExportDialog(config).run(layer_manager, store)

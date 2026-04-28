@@ -5,6 +5,7 @@ from typing import Any
 
 from .group_key import GroupKey, GroupKeyResolver
 from .job_history_resolver import JobHistoryResolver
+from .krita_core_adapter import create_group_for_nodes
 from .layer_move_adapter import LayerMoveAdapter
 from .sync_map_store import SyncRecord
 
@@ -230,7 +231,7 @@ class AutoMappingService:
                 job_id="manual",
                 seed=0,
             )
-            group = self.mover.create_group_for_layer(layer, group_key.group_name)
+            group = self._create_manual_group(layer, group_key.group_name)
             self.layer_manager.update()
             group.refresh()
 
@@ -255,6 +256,12 @@ class AutoMappingService:
         self.sync_map_store.load()
         self.layer_manager.update()
         return result
+
+    def _create_manual_group(self, layer: Any, group_name: str) -> Any:
+        document_ref = getattr(layer, "document_ref", None)
+        if document_ref is not None:
+            return create_group_for_nodes(document_ref, [layer], group_name)
+        return self.mover.create_group_for_layer(layer, group_name)
 
     def _fallback_export_key(self, layer: Any) -> str:
         raw = layer.name.strip() or layer.id_string

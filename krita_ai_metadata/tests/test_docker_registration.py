@@ -61,18 +61,18 @@ def test_runtime_source_uses_compat_wrappers_for_qt_and_ai_imports() -> None:
 def test_native_krita_api_calls_stay_in_core_adapter() -> None:
     allowed = {"krita_core_adapter.py"}
     forbidden = (
-        "activeDocument(",
-        "activeWindow(",
-        "activeView(",
-        "selectedNodes(",
-        "activeNode(",
-        "rootNode(",
-        "refreshProjection(",
-        "setAnnotation(",
-        "annotation(",
-        "removeAnnotation(",
-        "createGroupLayer(",
-        "projectionPixelData(",
+        ".activeDocument(",
+        ".activeWindow(",
+        ".activeView(",
+        ".selectedNodes(",
+        ".activeNode(",
+        ".rootNode(",
+        ".refreshProjection(",
+        ".setAnnotation(",
+        ".annotation(",
+        ".removeAnnotation(",
+        ".createGroupLayer(",
+        ".projectionPixelData(",
     )
 
     for path in PACKAGE_ROOT.rglob("*.py"):

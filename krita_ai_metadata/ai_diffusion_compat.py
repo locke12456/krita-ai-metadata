@@ -58,13 +58,18 @@ def is_finished_job(job: Any) -> bool:
 
 
 def is_group_layer(layer: Any) -> bool:
+    layer_type = getattr(layer, "type", None)
+    if isinstance(layer_type, str):
+        return layer_type.lower() == "grouplayer"
     if LayerType is None:
         return False
-    return getattr(layer, "type", None) is LayerType.group
+    return layer_type is LayerType.group
 
 
 def is_image_layer(layer: Any) -> bool:
     layer_type = getattr(layer, "type", None)
+    if isinstance(layer_type, str):
+        return layer_type.lower() in {"paintlayer", "grouplayer", "filelayer", "vectorlayer"}
     return bool(getattr(layer_type, "is_image", False))
 
 
