@@ -363,7 +363,8 @@ class DockerWindow(QWidget):
 
         options = self._current_options()
         report = self.runner.preview(self.layer_manager, self.sync_map_store, options)
-        lines = [f"Preview targets: {len(report.rows)}; warnings: {len(report.warnings)}"]
+        display_report_warnings = self._display_warnings(report.warnings)
+        lines = [f"Preview targets: {len(report.rows)}; warnings: {len(display_report_warnings)}"]
 
         for row in report.rows[:12]:
             state = "resolved" if row.resolved else "unresolved"
@@ -371,7 +372,7 @@ class DockerWindow(QWidget):
                 state += " / inherited"
             lines.append(f"- {row.key}: {row.layer_name} ({state}) -> {row.output_path}")
 
-        for warning in report.warnings[:8]:
+        for warning in display_report_warnings[:8]:
             lines.append(f"Warning: {warning}")
 
         self._report_label.setText("\n".join(lines))
@@ -389,8 +390,9 @@ class DockerWindow(QWidget):
             self._show_error(f"Export failed: {exc}")
             return
 
+        display_warnings = self._display_warnings(report.warnings)
         lines = [
-            f"Exported: {report.exported_count}; skipped: {report.skipped_count}; warnings: {len(report.warnings)}"
+            f"Exported: {report.exported_count}; skipped: {report.skipped_count}; warnings: {len(display_warnings)}"
         ]
         if report.aborted:
             lines.append("Export aborted.")
@@ -398,7 +400,7 @@ class DockerWindow(QWidget):
         for result in report.results[:12]:
             lines.append(f"- {result.key}: {result.png_path or 'not written'}")
 
-        for warning in report.warnings[:8]:
+        for warning in display_warnings[:8]:
             lines.append(f"Warning: {warning}")
 
         self._report_label.setText("\n".join(lines))
@@ -496,6 +498,22 @@ class DockerWindow(QWidget):
         self._selection_label.setText(
             f"Selected layers: {len(self.selection_model.selected_layer_ids)}"
         )
+
+    def _display_warnings(self, warnings: list[str]) -> list[str]:
+        """Hide AI-metadata implementation details in manual export mode."""
+        if self.feature_flags.prompt_search_enabled:
+            return list(warnings)
+
+        hidden_fragments = (
+            "Krita AI Diffusion",
+            "prompt search disabled",
+            "No metadata available for",
+        )
+        return [
+            warning
+            for warning in warnings
+            if not any(fragment in warning for fragment in hidden_fragments)
+        ]
 
     def _show_error(self, message: str) -> None:
         self._error_label.setText(message)

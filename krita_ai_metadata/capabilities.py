@@ -6,8 +6,8 @@ from enum import Enum
 from . import ai_diffusion_compat
 
 
-MISSING_AI_IMPORT_WARNING = "Krita AI Diffusion unavailable; prompt search disabled."
-MISSING_ACTIVE_MODEL_WARNING = "Krita AI Diffusion active model unavailable; prompt search disabled."
+MISSING_AI_IMPORT_WARNING = ""
+MISSING_ACTIVE_MODEL_WARNING = ""
 
 
 class RuntimeMode(str, Enum):
@@ -64,8 +64,8 @@ def build_feature_flags() -> FeatureFlags:
 
     return FeatureFlags(
         mode=RuntimeMode.manual_only,
-        mode_label="Manual-only (Krita AI Diffusion unavailable)",
-        mode_warning=warning,
+        mode_label="Manual metadata export",
+        mode_warning="",
         ai_diffusion_available=ai_available,
         active_ai_model_available=active_model_available,
         prompt_search_enabled=False,

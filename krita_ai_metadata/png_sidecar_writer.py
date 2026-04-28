@@ -42,7 +42,8 @@ class PngSidecarWriter:
         warnings = list(metadata.warnings)
         decision: ExportDecision | None = None
 
-        if not metadata.has_metadata:
+        manual_mode = metadata.payload.get("mode") == "manual_only"
+        if not metadata.has_metadata and not manual_mode:
             warning = f"No metadata available for '{metadata.key}'."
             if warning not in warnings:
                 warnings.append(warning)

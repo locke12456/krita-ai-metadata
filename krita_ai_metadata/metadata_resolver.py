@@ -43,8 +43,6 @@ class MetadataResolver:
         warnings = list(target.warnings)
 
         if not self.feature_flags.prompt_search_enabled:
-            if self.feature_flags.mode_warning:
-                warnings.append(self.feature_flags.mode_warning)
             payload = self._payload(target, target.record, "", warnings)
             return ResolvedMetadata(
                 target=target,
