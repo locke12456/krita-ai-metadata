@@ -78,9 +78,9 @@ class DockerWindow(QWidget):
 
         self._output_dir = QLineEdit(str(Path.home() / "krita_ai_metadata_export"), self)
         self._browse_button = QPushButton("Browse", self)
-        self._overwrite_checkbox = QCheckBox("Overwrite existing files", self)
-        self._allow_unresolved_checkbox = QCheckBox("Allow unresolved export", self)
-        self._manifest_checkbox = QCheckBox("Write manifest", self)
+        self._overwrite_checkbox = QCheckBox("Overwrite existing PNG / JSON files", self)
+        self._allow_unresolved_checkbox = QCheckBox("Allow unresolved AI metadata export", self)
+        self._manifest_checkbox = QCheckBox("Write manifest JSON", self)
         self._manifest_checkbox.setChecked(True)
         self._include_invisible_checkbox = QCheckBox("Include invisible selected targets", self)
         self._group_label = QLineEdit("", self)
@@ -183,6 +183,7 @@ class DockerWindow(QWidget):
         self._group_label.setEnabled(self.feature_flags.manual_group_enabled)
         self._preview_button.setEnabled(self.feature_flags.basic_export_enabled)
         self._export_button.setEnabled(self.feature_flags.basic_export_enabled)
+        self._apply_mode_specific_option_labels()
 
         if not self.feature_flags.prompt_search_enabled:
             if self._refresh_manual_only_context():
@@ -268,6 +269,32 @@ class DockerWindow(QWidget):
         self._render_layer_rows()
         self._update_labels()
         return True
+
+    def _apply_mode_specific_option_labels(self) -> None:
+        """Make export option labels match AI-enabled vs manual-only behavior."""
+        if not self.feature_flags.prompt_search_enabled:
+            self._allow_unresolved_checkbox.setChecked(True)
+            self._allow_unresolved_checkbox.setEnabled(False)
+            self._allow_unresolved_checkbox.setText("Manual export without AI metadata")
+            self._allow_unresolved_checkbox.setToolTip(
+                "Manual-only mode has no Krita AI Diffusion metadata to resolve; "
+                "exports are always written without AI prompt metadata."
+            )
+            self._manifest_checkbox.setText("Write manifest JSON")
+            self._manifest_checkbox.setToolTip("Optional: write manifest.json for exported PNG/JSON files.")
+            self._overwrite_checkbox.setText("Overwrite existing PNG / JSON files")
+            self._include_invisible_checkbox.setText("Include invisible selected targets")
+            return
+
+        self._allow_unresolved_checkbox.setEnabled(True)
+        self._allow_unresolved_checkbox.setText("Allow unresolved AI metadata export")
+        self._allow_unresolved_checkbox.setToolTip(
+            "When enabled, export targets that have no resolved AI metadata are still written."
+        )
+        self._manifest_checkbox.setText("Write manifest JSON")
+        self._manifest_checkbox.setToolTip("Optional: write manifest.json for exported PNG/JSON files.")
+        self._overwrite_checkbox.setText("Overwrite existing PNG / JSON files")
+        self._include_invisible_checkbox.setText("Include invisible selected targets")
 
     def choose_output_dir(self) -> None:
         """Let the user choose the docker export output directory."""

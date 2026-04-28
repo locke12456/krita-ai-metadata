@@ -290,9 +290,25 @@ def create_group_for_nodes(
     node_refs: list[KritaNodeRef],
     group_name: str,
 ) -> KritaNodeRef:
+    live_nodes = [node_ref for node_ref in node_refs if node_ref.node is not None]
+    if not live_nodes:
+        raise ValueError("Cannot create a metadata group without live layers")
+
+    anchor = live_nodes[0].node
+    parent = anchor.parentNode()
+    if parent is None:
+        raise ValueError("Cannot create a metadata group for a root or detached layer")
+
     group_node = document_ref.create_group_layer(group_name)
+
+    # Krita native createGroupLayer() may return a detached node. Attach the
+    # group to the source parent before removing any selected layer; otherwise
+    # moving layers into the detached group can make them disappear from the
+    # document tree, especially when rebuilding Krita 5 records in Krita 6.
+    parent.addChildNode(group_node, anchor)
     group_ref = KritaNodeRef(group_node, document_ref)
-    move_nodes_to_group(document_ref, node_refs, group_ref)
+
+    move_nodes_to_group(document_ref, live_nodes, group_ref)
     return group_ref
 
 
@@ -301,6 +317,9 @@ def move_nodes_to_group(
     node_refs: list[KritaNodeRef],
     group_ref: KritaNodeRef,
 ) -> None:
+    if group_ref.node.parentNode() is None:
+        raise ValueError("Cannot move layers into a detached metadata group")
+
     for node_ref in node_refs:
         if node_ref.node == group_ref.node:
             continue
