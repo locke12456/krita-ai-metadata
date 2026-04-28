@@ -99,10 +99,19 @@ def trim_prompt(text: str, max_length: int) -> str:
 
 
 def refresh_projection(document: Any) -> None:
-    raw_document = getattr(document, "_doc", None)
-    if raw_document is None:
+    """Refresh a document through plugin-owned or AI wrapper protocols only."""
+    refresh = getattr(document, "refresh_projection", None)
+    if callable(refresh):
+        try:
+            refresh()
+        except Exception:
+            return
         return
-    try:
-        raw_document.refreshProjection()
-    except Exception:
-        return
+
+    layers = getattr(document, "layers", None)
+    update = getattr(layers, "update", None)
+    if callable(update):
+        try:
+            update()
+        except Exception:
+            return

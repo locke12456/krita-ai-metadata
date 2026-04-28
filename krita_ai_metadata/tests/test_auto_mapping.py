@@ -1,4 +1,4 @@
-from tests.fakes.fake_ai_diffusion import FakeLayerType
+from fakes.fake_ai_diffusion import FakeLayerType
 
 from krita_ai_metadata.auto_mapping import AutoMappingService
 from krita_ai_metadata.sync_map_store import SyncRecord

@@ -22,6 +22,10 @@ def _add_path(path: Path) -> None:
 # Make the real package `krita_ai_metadata` importable.
 _add_path(REPO_ROOT)
 
+# Make local test helper packages importable when pytest is run from the
+# repository root with `krita_ai_metadata\tests` as the test target.
+_add_path(TESTS_DIR)
+
 
 # Local pytest runs do not provide Krita's embedded `krita` module.
 # Some environments provide a partial `krita` placeholder, so always patch
@@ -130,7 +134,7 @@ if "ai_diffusion" not in sys.modules:
 
 
 # ---- ai_diffusion minimal fake modules -------------------------------------
-from tests.fakes.fake_ai_diffusion import FakeBounds, FakeJobParams, FakeJobRegion, FakeLayerType
+from fakes.fake_ai_diffusion import FakeBounds, FakeJobParams, FakeJobRegion, FakeLayerType
 
 image_mod = types.ModuleType("ai_diffusion.image")
 Bounds = FakeBounds
@@ -367,6 +371,95 @@ for name, value in {
 }.items():
     if not hasattr(qtwidgets_mod, name):
         setattr(qtwidgets_mod, name, value)
+
+
+# ---- qt_compat local collection additions -----------------------------
+# The wrapper imports QtCore, QtGui, and QtWidgets from the PyQt5 package.
+# Local pytest does not provide real PyQt, so expose a complete minimal package
+# shape and the classes referenced by qt_compat.py.
+class QBuffer:
+    pass
+
+
+class QFile:
+    pass
+
+
+class QIODevice:
+    WriteOnly = object()
+
+
+class QRect:
+    pass
+
+
+class QSize:
+    pass
+
+
+class _Qt:
+    Checked = object()
+    Unchecked = object()
+
+
+for name, value in {
+    "QBuffer": QBuffer,
+    "QFile": QFile,
+    "QIODevice": QIODevice,
+    "QRect": QRect,
+    "QSize": QSize,
+    "Qt": _Qt,
+}.items():
+    if not hasattr(qtcore_mod, name):
+        setattr(qtcore_mod, name, value)
+
+
+qtgui_mod = sys.modules.get("PyQt5.QtGui")
+if qtgui_mod is None:
+    qtgui_mod = types.ModuleType("PyQt5.QtGui")
+    sys.modules["PyQt5.QtGui"] = qtgui_mod
+
+
+class QImage:
+    Format_ARGB32 = object()
+
+
+class QImageReader:
+    pass
+
+
+class QImageWriter:
+    pass
+
+
+class QPainter:
+    pass
+
+
+class QPixmap:
+    pass
+
+
+for name, value in {
+    "QAction": _Widget,
+    "QImage": QImage,
+    "QImageReader": QImageReader,
+    "QImageWriter": QImageWriter,
+    "QPainter": QPainter,
+    "QPixmap": QPixmap,
+}.items():
+    if not hasattr(qtgui_mod, name):
+        setattr(qtgui_mod, name, value)
+
+
+for name in ("QAction", "QComboBox", "QScrollArea"):
+    if not hasattr(qtwidgets_mod, name):
+        setattr(qtwidgets_mod, name, type(name, (_Widget,), {}))
+
+
+pyqt5_pkg.QtCore = qtcore_mod
+pyqt5_pkg.QtGui = qtgui_mod
+pyqt5_pkg.QtWidgets = qtwidgets_mod
 
 
 # ---- ai_diffusion.root ---------------------------------------------------

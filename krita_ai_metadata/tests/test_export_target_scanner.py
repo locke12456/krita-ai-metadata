@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 from krita_ai_metadata import ai_diffusion_compat
-from tests.fakes.fake_ai_diffusion import FakeLayerType
+from fakes.fake_ai_diffusion import FakeLayerType
 
 from krita_ai_metadata.export_target_scanner import ExportMode, ExportTargetScanner
 

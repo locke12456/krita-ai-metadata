@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from krita_ai_metadata import job_params_serializer
 from krita_ai_metadata.job_params_serializer import JobParamsSerializer
-from tests.fakes.fake_ai_diffusion import FakeBounds, FakeJobParams, FakeJobRegion
+from fakes.fake_ai_diffusion import FakeBounds, FakeJobParams, FakeJobRegion
 
 
 def test_job_params_serializer_roundtrip_through_wrapper_monkeypatch(monkeypatch):

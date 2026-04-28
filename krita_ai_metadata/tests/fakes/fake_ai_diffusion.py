@@ -47,15 +47,27 @@ class FakeJobParams:
     animation_id: str = ""
     resize_canvas: bool = False
 
+    @staticmethod
+    def _coerce_bounds(value: Any) -> FakeBounds:
+        if isinstance(value, FakeBounds):
+            return value
+        if isinstance(value, (list, tuple)):
+            return FakeBounds(*value)
+        if isinstance(value, dict):
+            return FakeBounds(**value)
+        return FakeBounds()
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "FakeJobParams":
-        bounds = data.get("bounds", FakeBounds())
-        if isinstance(bounds, (list, tuple)):
-            bounds = FakeBounds(*bounds)
-        regions = [
-            item if isinstance(item, FakeJobRegion) else FakeJobRegion(**item)
-            for item in data.get("regions", [])
-        ]
+        bounds = cls._coerce_bounds(data.get("bounds", FakeBounds()))
+        regions = []
+        for item in data.get("regions", []):
+            if isinstance(item, FakeJobRegion):
+                regions.append(item)
+                continue
+            region_data = dict(item)
+            region_data["bounds"] = cls._coerce_bounds(region_data.get("bounds", FakeBounds()))
+            regions.append(FakeJobRegion(**region_data))
         frame = data.get("frame", (0, 0, 0))
         if isinstance(frame, list):
             frame = tuple(frame)
