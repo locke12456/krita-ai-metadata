@@ -285,6 +285,54 @@ def wrap_node(node: Any) -> KritaNodeRef:
     return KritaNodeRef(node, active_krita_document())
 
 
+def add_layer_only_paint_layer(
+    document_ref: KritaDocumentRef,
+    name: str,
+    png_bytes: bytes | None = None,
+    parent_node: Any | None = None,
+    above_node: Any | None = None,
+) -> KritaNodeRef:
+    """Add a paint layer without creating a group."""
+    if document_ref is None:
+        raise ValueError("document_ref is required")
+    if not name:
+        raise ValueError("Layer name is required")
+
+    document = document_ref.document
+    create_node = getattr(document, "createNode", None)
+    if not callable(create_node):
+        raise RuntimeError("Krita document does not expose createNode")
+
+    node = create_node(name, "paintLayer")
+
+    if png_bytes:
+        set_pixel_data = getattr(node, "setPixelData", None)
+        if callable(set_pixel_data):
+            image = QImage()
+            if not image.loadFromData(png_bytes, "PNG"):
+                raise ValueError("Candidate layer PNG bytes could not be decoded")
+            image = image.convertToFormat(image_format_argb32())
+            width = int(image.width())
+            height = int(image.height())
+            ptr = image.bits()
+            try:
+                ptr.setsize(image.sizeInBytes())
+            except Exception:
+                ptr.setsize(image.byteCount())
+            set_pixel_data(QByteArray(bytes(ptr)), 0, 0, width, height)
+
+    parent = parent_node or getattr(document, "rootNode", lambda: None)()
+    if parent is None:
+        raise RuntimeError("Unable to resolve target parent node")
+    add_child = getattr(parent, "addChildNode", None)
+    if not callable(add_child):
+        raise RuntimeError("Target parent node does not expose addChildNode")
+
+    add_child(node, above_node)
+    document_ref.refresh_projection()
+    return KritaNodeRef(node, document_ref)
+
+
 def create_group_for_nodes(
     document_ref: KritaDocumentRef,
     node_refs: list[KritaNodeRef],
