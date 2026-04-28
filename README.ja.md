@@ -1,112 +1,117 @@
 # Krita AI Metadata Export
 
-Krita AI Metadata Export は、Krita AI Diffusion で生成されたレイヤーを、各レイヤーに対応する生成 metadata と一緒に書き出すための Krita プラグインです。
+**Version:** 0.20  
+**License:** MIT
 
-生成レイヤーの選択、読みやすい export group の作成、`.kra` ドキュメント内への metadata mapping 保存、export target の preview、PNG と JSON sidecar の出力を Docker UI から行えます。
+Krita AI Metadata Export は、Krita のレイヤーや export group を PNG として書き出し、対応する JSON sidecar と任意の batch manifest を生成するための Krita プラグインです。
 
-![Overview](images/overview.png)
+0.20 では Krita 5 / Krita 6 対応の docker workflow と、Krita AI Diffusion に依存しない manual metadata export mode を追加しました。Krita AI Diffusion が利用できる場合は AI 生成 prompt metadata を読み取れますが、インストールされていない環境でも grouping、preview、PNG export、JSON sidecar、manifest の基本 workflow は使用できます。
 
-## 主な機能
+![Krita AI Metadata Export overview](images/overview-krita-ai-export.png)
 
-- Krita 内の Docker UI
-- Krita AI Diffusion の生成レイヤー metadata を読み取り
-- 1 レイヤーまたは複数レイヤーの選択に対応
-- 現在の Krita layer selection をプラグイン側の selection に取り込み可能
-- 手動 Group label による分かりやすい export 名
-- 選択レイヤーから metadata export group への auto mapping
-- `.kra` ファイル内への metadata mapping 保存
-- synced / inherited、unsynced、visible、hidden、groups、layers の表示フィルター
-- resolved / unresolved export target を確認できる preview panel
-- 利用可能な場合、生成 metadata を PNG に埋め込み
-- 完全な metadata backup 用 JSON sidecar
-- 必要に応じて batch `manifest.json` を出力
+## 0.20 の主な変更点
+
+- Krita 5 / Krita 6 互換の plugin registration と docker support
+- Krita AI Diffusion なしで動作する manual metadata export mode
+- 選択レイヤーまたは export group から PNG と JSON sidecar を出力
+- `0001-chibi` のような読みやすい連番 export key
+- 選択された生成レイヤー向けの auto map workflow
+- `.kra` document 内への metadata mapping 保存
+- resolved / unresolved export target を確認する preview panel
+- batch `manifest.json` support
+- レイヤー移動、古い group 削除、再 auto map 後の安定性を改善
+- stale group record が古い seed を再利用する可能性を修正
+- manual mode で不要な Krita AI unavailable warning を表示しないように変更
 
 ## このプラグインの目的
 
-Krita AI Diffusion は画像と metadata を生成できますが、レイヤーを編集、グループ化、リネーム、コピー、または後から batch export する場合、生成 metadata と実際のレイヤーの対応が失われやすくなります。
+このプラグインは、Krita document 内の生成レイヤーを編集、整理、group 化、rename、公開準備した後でも、export される画像と対応 metadata の関係を維持するためのものです。
 
-このプラグインは Krita project 向けの専用 metadata export workflow を追加し、整理後の AI 生成レイヤーでも prompt、seed、関連 metadata を正しく書き出せるようにします。
+次のような用途に向いています。
 
-## 必要環境
+- 選択した生成レイヤーを PNG として export
+- 各 PNG に対応する JSON metadata を保存
+- batch export に安定した filename を使用
+- Krita AI Diffusion metadata が利用できる場合は generation parameters を保持
+- Krita AI Diffusion が利用できない場合でも手動整理した artwork を export
+- ファイルを書き出す前に output を preview
 
-- Krita
+## Requirements
+
+### Required
+
+- Python plugin support が有効な Krita
+- 書き込み可能な output folder
+
+### Optional
+
 - Krita AI Diffusion
-- Krita Python plugin support
 
-## インストール
+Krita AI Diffusion は AI prompt と generation metadata を読み取る場合にのみ必要です。Manual grouping と基本的な PNG / JSON export は Krita AI Diffusion に依存しません。
 
-1. この repository をダウンロード、または clone します。
-2. プラグインフォルダを Krita の Python plugin directory にコピーします。
+## Installation
+
+1. この repository を download または clone します。
+2. Plugin folder を Krita の Python plugin directory にコピーします。
 3. Krita を再起動します。
-4. Krita の Python Plugin Manager でプラグインを有効化します。
+4. Krita の Python Plugin Manager で plugin を有効化します。
 5. Krita の Docker menu から Metadata Export docker を開きます。
 
-## 基本ワークフロー
+## Basic Workflow
 
 ![Layout](images/layout.png)
 
-### 1. Krita で画像を生成、または既存ファイルを開く
+### 1. Metadata Export docker を開く
 
-通常通り Krita AI Diffusion を使用します。
+Docker には次の項目があります。
 
-生成レイヤーには、次のような metadata が含まれることがあります。
+- Runtime mode label
+- 現在の document state
+- Layer selection controls
+- Layer list と metadata sync state
+- Manual group label input
+- Output folder selection
+- Export options
+- Preview log
+- Export result log
 
-~~~text
-[Generated] 1girl, chibi,
-wariza,
-very long hair, big eyes, animal ear fluff, animal ears,
-white hair, blue eyes,
-maid apron, (1008361379)
-~~~
+### 2. AI-enabled mode または manual mode を使う
 
-### 2. Metadata Export docker を開く
+Krita AI Diffusion metadata が利用できる場合、plugin は metadata snapshot または job history から prompt metadata を解決できます。
 
-Docker には次の情報が表示されます。
+![AI metadata overview](images/overview-krita-ai-export.png)
 
-- 現在の document 状態
-- 選択中の layer 数
-- Layer metadata list
-- Metadata sync 状態
-- Group label 入力欄
-- Output folder
-- Export mode
-- Manifest と export options
-- Preview と export result log
+Krita AI Diffusion が利用できない場合、plugin は manual metadata export mode を使用します。
 
-![Docker Main](images/overview.png)
+![Krita 6 manual mode export](images/overview-krita-6-manual-mode-export.png)
 
-### 3. Layer 表示フィルターを設定する
+Manual mode でも次の workflow は使用できます。
 
-Docker 上部の checkbox で、layer list に表示する項目を制御できます。
+- Layers または groups を選択
+- Export groups を作成
+- Export targets を preview
+- PNG files を export
+- JSON sidecars を書き出し
+- Manifest を書き出し
 
-- **Synced / inherited**
-- **Unsynced**
-- **Visible**
-- **Hidden**
-- **Groups**
-- **Layers**
+Manual mode は存在しない prompt、seed、sampler、model data を勝手に作成しません。
 
-生成画像レイヤー、通常の paint layer、background layer が混在している document で、export target を探しやすくなります。
+### 3. Layers を filter して選択する
 
-### 4. 現在の Krita selection を取り込む
+Layer list filters で表示対象を絞り込めます。
 
-**Import current Krita selection** をクリックすると、現在 Krita で選択している layer をプラグイン側の selection に反映できます。
+- Synced / inherited
+- Unsynced
+- Visible
+- Hidden
+- Groups
+- Layers
 
-Docker には選択数が表示されます。
+現在の Krita selection を plugin selection に取り込み、mapping または export する layers を選択できます。
 
-~~~text
-Selected layers: 1
-~~~
+### 4. Group label を入力する
 
-または：
-
-~~~text
-Selected layers: 4
-~~~
-
-### 5. Group label を入力する
-
-Auto mapping を行う前に、人間が読みやすい group label を入力します。
+選択 layers を mapping する前に、読みやすい group label を入力します。
 
 例：
 
@@ -114,7 +119,7 @@ Auto mapping を行う前に、人間が読みやすい group label を入力し
 chibi
 ~~~
 
-プラグインは次のような export 名を作成します。
+Plugin は export 向けの名前を作成します。
 
 ~~~text
 [0001] - chibi
@@ -122,7 +127,7 @@ chibi
 0001-chibi.json
 ~~~
 
-複数レイヤーを選択した場合、連番の target が作成されます。
+複数 layers を選択した場合、連番 target が作成されます。
 
 ~~~text
 0001-chibi.png
@@ -131,179 +136,151 @@ chibi
 0004-chibi.png
 ~~~
 
-Seed は metadata 内に保存されますが、group name や filename には使用されません。
+Seed は利用可能な場合 metadata に保存されますが、group name や filename には使用されません。
 
-### 6. Auto map selected layers
+### 5. Auto map selected layers
 
 **Auto map selected layers** をクリックします。
 
+![Auto map selected layers](images/auto-map.png)
+
 Auto mapping は metadata export group を作成し、その mapping を `.kra` document に保存します。
 
-![Auto Map](images/auto-map.png)
+これにより、あとで layers を整理した場合でも、document 内に保存された snapshot から metadata を解決できます。
 
-Mapping 後、選択した生成レイヤーは次のような export group の下に表示されます。
+0.20 では、layer を古い group から移動し、古い group を削除してから再度 auto map したときに、古い group の seed が再利用される可能性がある問題も修正しています。
 
-~~~text
-[0001] - chibi
-  [Generated] 1girl, chibi,
-  wariza,
-  ...
-~~~
+### 6. Output folder を選択する
 
-### 7. Output folder を選択する
+現在の document が保存済みの場合、output folder は `.kra` の場所に合わせられます。
 
-現在の document が保存済みの場合、output folder は既定で `.kra` の保存場所に同期されます。
-
-例：
-
-~~~text
-E:\code\dev\AI\productions\games\ero\pixel\plugin test\release\test
-~~~
-
-現在の document が未保存の場合、home export folder が使用されます。
-
-~~~text
-C:\Users\L\krita_ai_metadata_export
-~~~
-
-Cross-platform 表記では次の通りです。
+Document が未保存の場合、plugin は次のような home export folder を使用できます。
 
 ~~~text
 ~/krita_ai_metadata_export
 ~~~
 
-**Browse** をクリックして手動で output folder を選択することもできます。
+**Browse** から手動で folder を選択することもできます。
 
-### 8. Export options を設定する
+### 7. Export options を設定する
 
-現在の options には次のものがあります。
+主な options は次の通りです。
 
-- **Export mode**
-  - `Selected docker layers`
-- **Overwrite existing files**
-- **Allow unresolved export**
-- **Write manifest**
-- **Include invisible selected targets**
+- Export mode
+- Overwrite existing files
+- Allow unresolved export
+- Write manifest
+- Include invisible selected targets
 
-現在の主な出力形式は PNG です。JPEG、DPI、resize options は将来の機能として予約されています。
+この version の主な export format は PNG です。
 
-### 9. Export target を preview する
+### 8. Preview export
 
-実際にファイルを書き出す前に、**Preview export** をクリックして target と metadata 状態を確認します。
+ファイルを書き出す前に **Preview export** をクリックします。
 
-Preview には target 数と warning 数が表示されます。
+![Export preview](images/export-preview.png)
+
+Preview では次を確認できます。
+
+- Target count
+- Output paths
+- Resolved / unresolved metadata state
+- Warnings
+- Export key が正しいかどうか
 
 例：
 
 ~~~text
-Preview targets: 1; warnings: 0
-- 0001-chibi: [Generated] 1girl, chibi,
-wariza,
-very long hair, big eyes, animal ear fluff, animal ears,
-white hair, blue eyes,
-maid apron, (1008361379) (resolved) -> C:\Users\L\krita_ai_metadata_export\0001-chibi.png
+Preview targets: 2; warnings: 0
+- 0005-test: [Generated] ... (resolved) -> output/0005-test.png
+- 0006-test: [Generated] ... (resolved) -> output/0006-test.png
 ~~~
 
-![Export Preview](images/export-preview.png)
-
-### 10. PNG metadata を export する
+### 9. Export selected PNG metadata
 
 **Export selected PNG metadata** をクリックします。
 
-1 target の場合、結果は次のようになります。
+![Export result 1](images/export-result1.png)
 
-~~~text
-Exported: 1; skipped: 0; warnings: 0
-- 0001-chibi: C:\Users\L\krita_ai_metadata_export\0001-chibi.png
-~~~
-
-4 つの selected targets の場合、結果は次のようになります。
-
-~~~text
-Exported: 4; skipped: 0; warnings: 0
-- 0001-chibi: E:\...\test\0001-chibi.png
-- 0002-chibi: E:\...\test\0002-chibi.png
-- 0003-chibi: E:\...\test\0003-chibi.png
-- 0004-chibi: E:\...\test\0004-chibi.png
-~~~
-
-![Export Result](images/export-result.png)
-
-## Exported Files
-
-各 resolved target について、次のファイルが出力されます。
+各 export target について、次の files が書き出されます。
 
 ~~~text
 {name}.png
 {name}.json
 ~~~
 
-**Write manifest** が有効な場合、次のファイルも出力されます。
+Manifest が有効な場合は、次も書き出されます。
 
 ~~~text
 manifest.json
 ~~~
 
-出力例：
+![Export result 2](images/export-result2.png)
 
-~~~text
-0001-chibi.json
-0001-chibi.png
-manifest.json
-~~~
+## Output Files
 
-PNG には、利用可能な場合、生成 metadata が埋め込まれます。
+### PNG
 
-JSON sidecar には、backup や外部 workflow のために完全な metadata payload が保存されます。
+PNG は実際に export される画像です。
 
-## Civitai Create Post での確認
+Metadata が利用できる場合、PNG に generation parameters を埋め込めます。
 
-![Civitai Create Post](images/civitai-post.png)
+### JSON sidecar
 
-Export された PNG metadata は、Civitai の create post 画面で読み取ることができます。
+JSON sidecar には structured export payload が保存されます。
 
-Export した PNG を Civitai create post にアップロードすると、Civitai は generation prompt、negative prompt、image preview、および次のような generation parameters を表示できます。
+- Export key
+- Group name
+- Group ID
+- Layer IDs
+- Manual label
+- Sync index
+- Image index
+- 利用可能な seed
+- 利用可能な params snapshot
+- 利用可能な A1111 parameters
+- Runtime mode fields
+- Warning list
+- Group target の child layer summary
 
-~~~text
-Guidance: 5.5
-Steps: 30
-Sampler: Euler beta
-Seed: 1959819091
-~~~
+### Manifest
 
-Civitai 画面では、次のような prompt が読み取れます。
+任意の `manifest.json` は batch-level の export index です。
 
-~~~text
-1girl, chibi, wariza, very long hair, big eyes, animal ear fluff, animal ears,
-white hair, blue eyes, maid apron, anime, source anime, illustration,
-very aesthetic, high resolution, ultra-detailed flat colors, ...
-~~~
+## Metadata and Manual Mode
 
-Metadata 内の resource 名が Civitai 上の model と一致しない場合、Civitai は resource matching warning を表示することがあります。
+AI-enabled mode では、保存された metadata snapshot と Krita AI Diffusion integration を使って generation metadata を書き出せます。
 
-例：
+Manual mode では、prompt search と AI metadata lookup は無効になります。Export は引き続き可能ですが、plugin が存在しない prompt や seed を作成することはありません。
 
-~~~text
-The following resources could not be matched to models on Civitai:
-[Illustrious] dvine 2.0
-~~~
+これにより、output は正確に保たれます。
 
-これは、export された PNG に Civitai create post が解析できる prompt metadata が保持されていることを確認するものです。
+- 利用可能な metadata は保存される
+- 不足している metadata は不足したまま扱う
+- Manual export は引き続き使用できる
+- PNG / JSON / manifest files は生成できる
 
-## Metadata の保存
+## Civitai Create Post Verification
 
-このプラグインは export metadata mapping を `.kra` document 内に保存します。
+![Civitai create post](images/civitai-post.png)
 
-そのため、mapping 作成後に `.kra` を保存していれば、Krita AI Diffusion の job history が削除された後でも、`.kra` 内の metadata snapshot から export metadata を復元できます。
+Export した PNG は Civitai の create post 画面に upload できます。
 
-利用可能な metadata snapshot が存在しない場合、その target は unresolved として表示されます。プラグインが prompt、seed、sampler、job 情報を勝手に生成することはありません。
+Generation metadata が利用できる場合、Civitai は PNG に埋め込まれた parameters を読み取り、prompt、negative prompt、preview image、seed、steps、sampler、guidance などの generation settings を表示できます。
 
-## Notes
+これは、export された PNG が外部 tools で解析可能な metadata を保持しているか確認するために役立ちます。
 
-- Export 前に **Preview export** で target name と metadata resolution を確認することを推奨します。
-- Batch-level index が必要な場合は、**Write manifest** を有効にしてください。
-- Metadata が不完全な target を意図的に出力する場合のみ、**Allow unresolved export** を有効にしてください。
-- 現在、このプラグインは PNG metadata export を中心にしています。
+## Recommended Use
+
+- Export 前に **Preview export** を使用してください。
+- Auto map 後に `.kra` を保存し、metadata mapping を保持してください。
+- File names には読みやすい group label を使用してください。
+- Batch export では **Write manifest** を有効にしてください。
+- Metadata が不完全な output を意図する場合のみ **Allow unresolved export** を使用してください。
+
+## License
+
+This project is licensed under the MIT License.
 
 ## Links
 

@@ -1,37 +1,53 @@
 # Krita AI Metadata Export
 
-Krita AI Metadata Export is a Krita plugin for exporting Krita AI Diffusion results while preserving the generation metadata that belongs to each layer.
+**Version:** 0.20  
+**License:** MIT
 
-It helps artists select generated layers, create readable export groups, keep metadata mapping inside the `.kra` document, preview export targets, and export PNG files with matching JSON sidecars.
+Krita AI Metadata Export is a Krita plugin for exporting generated artwork layers with structured metadata, PNG output, JSON sidecars, and optional batch manifests.
 
-![Overview](images/overview.png)
+Version 0.20 adds a Krita 5 / Krita 6 compatible workflow and a standalone manual metadata export mode. Krita AI Diffusion can still be used for AI-generated prompt metadata, but the core grouping, preview, PNG export, JSON sidecar, and manifest workflow can also run without Krita AI Diffusion installed.
 
-## Features
+![Krita AI Metadata Export overview](images/overview-krita-ai-export.png)
 
-- Docker-based workflow inside Krita
-- Reads generated-layer metadata from Krita AI Diffusion layers
-- Supports one or multiple selected layers
-- Imports the current Krita layer selection into the plugin selection
-- Manual group label for export-friendly names
-- Auto mapping from selected layers to metadata export groups
-- Persistent metadata mapping stored in the `.kra` document
-- Filters for synced / inherited, unsynced, visible, hidden, groups, and layers
+## Highlights in 0.20
+
+- Krita 5 / Krita 6 compatible plugin registration and docker support
+- Manual metadata export mode that works without Krita AI Diffusion
+- PNG export and JSON sidecar export from selected layers or export groups
+- Metadata export groups with readable sequential keys such as `0001-chibi`
+- Auto map workflow for selected generated layers
+- Persistent mapping stored inside the `.kra` document
 - Preview panel for resolved and unresolved export targets
-- PNG export with embedded generation metadata when available
-- JSON sidecar export for complete metadata backup
-- Optional batch `manifest.json`
+- Batch `manifest.json` support
+- Safer handling for moved layers, deleted old groups, and re-auto-mapping
+- Fixes stale group records that could reuse an old seed after layer reorganization
+- Manual mode no longer shows irrelevant Krita AI unavailable warnings
 
-## Why this plugin exists
+## What this plugin does
 
-Krita AI Diffusion can generate images and store generation information, but after layers are edited, grouped, renamed, copied, or exported later, it can be difficult to keep each visual result connected to its original generation metadata.
+The plugin helps keep each exported image connected to its intended metadata after a Krita document has been edited, grouped, renamed, or prepared for publishing.
 
-This plugin adds a dedicated metadata export workflow for Krita projects, so generated images can still be exported with their prompt, seed, and related metadata after the document has been organized.
+It is useful when you want to:
+
+- Export selected generated layers as PNG files
+- Keep matching JSON metadata next to every PNG
+- Use stable filenames for batches
+- Preserve generation parameters when Krita AI Diffusion metadata is available
+- Export manually organized artwork even when Krita AI Diffusion is unavailable
+- Verify output before writing files
 
 ## Requirements
 
-- Krita
+### Required
+
+- Krita with Python plugin support
+- A writable output folder
+
+### Optional
+
 - Krita AI Diffusion
-- Python plugin support enabled in Krita
+
+Krita AI Diffusion is only required for AI-derived prompt and generation metadata lookup. Manual grouping and basic PNG / JSON export remain available without it.
 
 ## Installation
 
@@ -45,68 +61,57 @@ This plugin adds a dedicated metadata export workflow for Krita projects, so gen
 
 ![Layout](images/layout.png)
 
-### 1. Generate or open artwork in Krita
+### 1. Open the Metadata Export docker
 
-Use Krita AI Diffusion as usual.
+The docker provides:
 
-Generated layers may contain prompt metadata such as:
+- Runtime mode label
+- Current document state
+- Layer selection controls
+- Layer list and metadata sync state
+- Manual group label input
+- Output folder selection
+- Export options
+- Preview log
+- Export result log
 
-~~~text
-[Generated] 1girl, chibi,
-wariza,
-very long hair, big eyes, animal ear fluff, animal ears,
-white hair, blue eyes,
-maid apron, (1008361379)
-~~~
+### 2. Choose AI-enabled mode or manual mode
 
-### 2. Open the Metadata Export docker
+When Krita AI Diffusion metadata is available, the plugin can resolve prompt metadata from stored snapshots or job history.
 
-The docker shows:
+![AI metadata overview](images/overview-krita-ai-export.png)
 
-- Active document state
-- Number of selected layers
-- Layer metadata list
-- Metadata sync state
-- Group label input
-- Output folder
-- Export mode
-- Manifest and export options
-- Preview and export result logs
+When Krita AI Diffusion is unavailable, the plugin uses manual metadata export mode.
 
-![Docker Main](images/overview.png)
+![Krita 6 manual mode export](images/overview-krita-6-manual-mode-export.png)
 
-### 3. Select layer filters
+Manual mode keeps the export workflow available:
 
-Use the checkboxes at the top of the docker to control what appears in the layer list:
+- Select layers or groups
+- Create export groups
+- Preview export targets
+- Export PNG files
+- Write JSON sidecars
+- Write a manifest
 
-- **Synced / inherited**
-- **Unsynced**
-- **Visible**
-- **Hidden**
-- **Groups**
-- **Layers**
+Manual mode does not invent missing prompt, seed, sampler, or model data.
 
-This is useful when a document contains both generated image layers and ordinary paint or background layers.
+### 3. Filter and select layers
 
-### 4. Import the current Krita selection
+Use the layer list filters to narrow the visible targets:
 
-Click **Import current Krita selection** to copy Krita's current layer selection into the plugin.
+- Synced / inherited
+- Unsynced
+- Visible
+- Hidden
+- Groups
+- Layers
 
-The docker will show the selected layer count, for example:
+You can import the current Krita selection into the plugin selection and then choose which layers to map or export.
 
-~~~text
-Selected layers: 1
-~~~
+### 4. Enter a group label
 
-or:
-
-~~~text
-Selected layers: 4
-~~~
-
-### 5. Enter a group label
-
-Before auto mapping selected layers, enter a human-readable group label.
+Before mapping selected layers, enter a readable group label.
 
 Example:
 
@@ -114,7 +119,7 @@ Example:
 chibi
 ~~~
 
-The plugin creates export-friendly names such as:
+The plugin creates export-friendly names:
 
 ~~~text
 [0001] - chibi
@@ -122,7 +127,7 @@ The plugin creates export-friendly names such as:
 0001-chibi.json
 ~~~
 
-For multiple selected layers, it creates sequential targets:
+For multiple selected layers, the plugin creates sequential export targets:
 
 ~~~text
 0001-chibi.png
@@ -131,179 +136,151 @@ For multiple selected layers, it creates sequential targets:
 0004-chibi.png
 ~~~
 
-The seed is kept in metadata, but it is not used in the group name or filename.
+The seed is stored in metadata when available, but it is not used as the group name or filename.
 
-### 6. Auto map selected layers
+### 5. Auto map selected layers
 
 Click **Auto map selected layers**.
 
-Auto mapping creates a metadata export group and stores the mapping in the `.kra` document.
+![Auto map selected layers](images/auto-map.png)
 
-![Auto Map](images/auto-map.png)
+Auto mapping creates metadata export groups and stores the mapping in the `.kra` document.
 
-After mapping, the selected generated layer appears under an export group such as:
+This allows metadata to be resolved later from the document snapshot, even if the layer has been reorganized.
 
-~~~text
-[0001] - chibi
-  [Generated] 1girl, chibi,
-  wariza,
-  ...
-~~~
+Version 0.20 also fixes a stale-record case where moving a layer out, deleting the old group, and running auto map again could reuse the old group's seed.
 
-### 7. Choose the output folder
+### 6. Choose the output folder
 
-If the document is saved, the output folder is synced to the saved `.kra` location by default.
+If the document is saved, the output folder can follow the `.kra` location.
 
-Example:
-
-~~~text
-E:\code\dev\AI\productions\games\ero\pixel\plugin test\release\test
-~~~
-
-If the document is unsaved, the plugin uses a home export folder:
-
-~~~text
-C:\Users\L\krita_ai_metadata_export
-~~~
-
-or, in cross-platform form:
+If the document is unsaved, the plugin can use a home export folder such as:
 
 ~~~text
 ~/krita_ai_metadata_export
 ~~~
 
-You can also click **Browse** to choose a folder manually.
+You can also choose a folder manually with **Browse**.
 
-### 8. Choose export options
+### 7. Configure export options
 
-Current options include:
+Common options include:
 
-- **Export mode**
-  - `Selected docker layers`
-- **Overwrite existing files**
-- **Allow unresolved export**
-- **Write manifest**
-- **Include invisible selected targets**
+- Export mode
+- Overwrite existing files
+- Allow unresolved export
+- Write manifest
+- Include invisible selected targets
 
-PNG output is currently the active export format. JPEG, DPI, and resize options are reserved for future use.
+PNG is the primary export format in this version.
 
-### 9. Preview export targets
+### 8. Preview export
 
 Click **Preview export** before writing files.
 
-The preview shows how many targets will be exported and whether there are warnings.
+![Export preview](images/export-preview.png)
+
+The preview helps verify:
+
+- Target count
+- Output paths
+- Resolved / unresolved metadata state
+- Warnings
+- Whether the output key is correct
 
 Example:
 
 ~~~text
-Preview targets: 1; warnings: 0
-- 0001-chibi: [Generated] 1girl, chibi,
-wariza,
-very long hair, big eyes, animal ear fluff, animal ears,
-white hair, blue eyes,
-maid apron, (1008361379) (resolved) -> C:\Users\L\krita_ai_metadata_export\0001-chibi.png
+Preview targets: 2; warnings: 0
+- 0005-test: [Generated] ... (resolved) -> output/0005-test.png
+- 0006-test: [Generated] ... (resolved) -> output/0006-test.png
 ~~~
 
-![Export Preview](images/export-preview.png)
-
-### 10. Export PNG metadata
+### 9. Export PNG metadata
 
 Click **Export selected PNG metadata**.
 
-For one selected target, the result may look like:
+![Export result 1](images/export-result1.png)
 
-~~~text
-Exported: 1; skipped: 0; warnings: 0
-- 0001-chibi: C:\Users\L\krita_ai_metadata_export\0001-chibi.png
-~~~
-
-For four selected targets:
-
-~~~text
-Exported: 4; skipped: 0; warnings: 0
-- 0001-chibi: E:\...\test\0001-chibi.png
-- 0002-chibi: E:\...\test\0002-chibi.png
-- 0003-chibi: E:\...\test\0003-chibi.png
-- 0004-chibi: E:\...\test\0004-chibi.png
-~~~
-
-![Export Result](images/export-result.png)
-
-## Exported Files
-
-For each resolved target, the plugin writes:
+For each exported target, the plugin writes:
 
 ~~~text
 {name}.png
 {name}.json
 ~~~
 
-When **Write manifest** is enabled, the plugin also writes:
+When manifest output is enabled, it also writes:
 
 ~~~text
 manifest.json
 ~~~
 
-Example output:
+![Export result 2](images/export-result2.png)
 
-~~~text
-0001-chibi.json
-0001-chibi.png
-manifest.json
-~~~
+## Output Files
 
-The PNG contains embedded generation metadata when available.
+### PNG
 
-The JSON sidecar stores the full metadata payload for backup and external workflows.
+The PNG is the exported visual image.
+
+When metadata is available, the PNG can include embedded generation parameters.
+
+### JSON sidecar
+
+The JSON sidecar stores the structured export payload, including:
+
+- Export key
+- Group name
+- Group ID
+- Layer IDs
+- Manual label
+- Sync index
+- Image index
+- Seed when available
+- Params snapshot when available
+- A1111 parameters when available
+- Runtime mode fields
+- Warning list
+- Child layer summary for group targets
+
+### Manifest
+
+The optional `manifest.json` provides a batch-level index of exported files.
+
+## Metadata and Manual Mode
+
+In AI-enabled mode, the plugin can use stored metadata snapshots and Krita AI Diffusion integration to write generation metadata.
+
+In manual mode, prompt search and AI metadata lookup are disabled. Export still works, but the plugin will not fabricate missing prompt or seed data.
+
+This keeps the output honest:
+
+- Available metadata is preserved
+- Missing metadata stays missing
+- Manual exports remain usable
+- PNG / JSON / manifest files can still be produced
 
 ## Civitai Create Post Verification
 
-![Civitai Create Post](images/civitai-post.png)
+![Civitai create post](images/civitai-post.png)
 
-The exported PNG metadata can be read by Civitai's create post screen.
+Exported PNG files can be uploaded to Civitai's create post screen.
 
-After uploading an exported PNG, Civitai can display the generation prompt, negative prompt, image preview, and generation parameters such as:
+When generation metadata is available, Civitai can read the embedded PNG parameters and show prompt text, negative prompt, preview image, and generation settings such as seed, steps, sampler, and guidance.
 
-~~~text
-Guidance: 5.5
-Steps: 30
-Sampler: Euler beta
-Seed: 1959819091
-~~~
+This is useful for checking that the exported PNG still carries metadata in a format external tools can inspect.
 
-Example prompt content shown by Civitai:
+## Recommended Use
 
-~~~text
-1girl, chibi, wariza, very long hair, big eyes, animal ear fluff, animal ears,
-white hair, blue eyes, maid apron, anime, source anime, illustration,
-very aesthetic, high resolution, ultra-detailed flat colors, ...
-~~~
+- Use **Preview export** before exporting.
+- Save the `.kra` document after auto mapping so metadata mapping persists.
+- Use readable group labels for filenames.
+- Use **Write manifest** for batch exports.
+- Use **Allow unresolved export** only when exporting without complete metadata is intentional.
 
-Civitai may also show model/resource matching warnings if a resource name in the metadata cannot be matched to a Civitai model.
+## License
 
-Example:
-
-~~~text
-The following resources could not be matched to models on Civitai:
-[Illustrious] dvine 2.0
-~~~
-
-This confirms that the exported PNG keeps prompt metadata in a format Civitai can inspect during post creation.
-
-## Metadata Persistence
-
-The plugin stores export metadata mapping inside the `.kra` document.
-
-This means exported metadata can still be resolved later, even if Krita AI Diffusion job history is deleted, as long as the `.kra` file was saved after mapping.
-
-If no metadata snapshot exists, the target is marked unresolved. The plugin does not invent missing prompt, seed, sampler, or job data.
-
-## Notes
-
-- Use **Preview export** to verify target names and metadata resolution before exporting.
-- Use **Write manifest** when you need a batch-level index of exported files.
-- Use **Allow unresolved export** only if you intentionally want to export targets without complete metadata.
-- The plugin currently focuses on PNG metadata export.
+This project is licensed under the MIT License.
 
 ## Links
 
