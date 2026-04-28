@@ -44,3 +44,42 @@ def test_docker_entry_point_exposes_lifecycle_methods() -> None:
     assert "self._window.refresh_from_canvas(canvas)" in source
     assert "def update_content(self):" in source
     assert "self._window.refresh()" in source
+
+def test_runtime_source_uses_compat_wrappers_for_qt_and_ai_imports() -> None:
+    allowed = {"qt_compat.py", "ai_diffusion_compat.py"}
+    forbidden = ("from PyQt5", "from PyQt6", "import PyQt5", "import PyQt6", "from ai_diffusion.", "import ai_diffusion.")
+
+    for path in PACKAGE_ROOT.rglob("*.py"):
+        relative = path.relative_to(PACKAGE_ROOT).as_posix()
+        if relative.startswith("tests/") or path.name in allowed:
+            continue
+        source = path.read_text(encoding="utf-8")
+        for marker in forbidden:
+            assert marker not in source, f"{relative} contains forbidden import marker {marker!r}"
+
+
+def test_native_krita_api_calls_stay_in_core_adapter() -> None:
+    allowed = {"krita_core_adapter.py"}
+    forbidden = (
+        "activeDocument(",
+        "activeWindow(",
+        "activeView(",
+        "selectedNodes(",
+        "activeNode(",
+        "rootNode(",
+        "refreshProjection(",
+        "setAnnotation(",
+        "annotation(",
+        "removeAnnotation(",
+        "createGroupLayer(",
+        "projectionPixelData(",
+    )
+
+    for path in PACKAGE_ROOT.rglob("*.py"):
+        relative = path.relative_to(PACKAGE_ROOT).as_posix()
+        if relative.startswith("tests/") or path.name in allowed:
+            continue
+        source = path.read_text(encoding="utf-8")
+        for marker in forbidden:
+            assert marker not in source, f"{relative} contains native Krita API call {marker!r}"
+

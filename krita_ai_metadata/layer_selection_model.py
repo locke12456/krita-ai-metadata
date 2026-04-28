@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ai_diffusion.layer import Layer, LayerManager, LayerType
+from .ai_diffusion_compat import is_group_layer
 
 from .export_options import ExportOptions
 from .export_target_scanner import ExportMode
@@ -35,7 +35,7 @@ class LayerSelectionModel:
     selected_layer_ids: list[str] = field(default_factory=list)
     selected_group_ids: list[str] = field(default_factory=list)
 
-    def rebuild(self, layer_manager: LayerManager, sync_map_store: Any) -> None:
+    def rebuild(self, layer_manager: Any, sync_map_store: Any) -> None:
         """Rebuild row state from Krita layers and sync-map records."""
         rows: list[LayerSelectionRow] = []
 
@@ -68,7 +68,7 @@ class LayerSelectionModel:
 
     def import_krita_selection(
         self,
-        layer_manager: LayerManager,
+        layer_manager: Any,
         view_adapter: KritaViewAdapter | None = None,
     ) -> None:
         """Explicitly copy current Krita native selection into docker selection."""
@@ -137,7 +137,7 @@ class LayerSelectionModel:
             image_extension="png",
         )
 
-    def _row_for_layer(self, layer: Layer, sync_map_store: Any) -> LayerSelectionRow:
+    def _row_for_layer(self, layer: Any, sync_map_store: Any) -> LayerSelectionRow:
         layer_record = sync_map_store.resolve_layer(layer.id_string)
         group_record = sync_map_store.resolve_group(group_id=layer.id_string, group_name=layer.name)
 
@@ -164,7 +164,7 @@ class LayerSelectionModel:
             name=layer.name,
             layer_type=layer.type.value,
             visible=layer.is_visible,
-            is_group=layer.type == LayerType.group,
+            is_group=is_group_layer(layer),
             synced=synced,
             inherited=inherited,
             metadata_state=metadata_state,

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ai_diffusion.layer import Layer, LayerManager, RestoreActiveLayer
+from .ai_diffusion_compat import Layer, LayerManager, RestoreActiveLayer
 
 
 class LayerMoveAdapter:

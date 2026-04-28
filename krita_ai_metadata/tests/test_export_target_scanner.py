@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
-from ai_diffusion.layer import LayerType
+from krita_ai_metadata import ai_diffusion_compat
+from tests.fakes.fake_ai_diffusion import FakeFakeLayerType
 
 from krita_ai_metadata.export_target_scanner import ExportMode, ExportTargetScanner
 
@@ -15,7 +16,7 @@ class FakeLayer:
         self,
         layer_id: str,
         name: str,
-        layer_type: LayerType = LayerType.paint,
+        layer_type: FakeLayerType = FakeLayerType.paint,
         visible: bool = True,
         is_zero: bool = False,
         parent_layer=None,
@@ -50,9 +51,10 @@ class FakeViewAdapter:
         return list(self.selected)
 
 
-def test_scan_selected_ids_resolves_group_and_layer_records() -> None:
-    group = FakeLayer("group-1", "Group", LayerType.group)
-    layer = FakeLayer("layer-1", "Layer", LayerType.paint)
+def test_scan_selected_ids_resolves_group_and_layer_records(monkeypatch) -> None:
+    monkeypatch.setattr(ai_diffusion_compat, "LayerType", FakeLayerType)
+    group = FakeLayer("group-1", "Group", FakeLayerType.group)
+    layer = FakeLayer("layer-1", "Layer", FakeLayerType.paint)
     manager = SimpleNamespace(all=[group, layer])
     store = FakeStore(
         layer_records={"layer-1": {"export_key": "layer-key", "target_type": "layer"}},
@@ -126,9 +128,10 @@ def test_all_mode_respects_include_invisible_targets() -> None:
     assert [target.layer.id_string for target in all_targets] == ["visible", "hidden"]
 
 
-def test_child_layer_inherits_parent_group_metadata() -> None:
-    parent = FakeLayer("group-1", "Parent Group", LayerType.group)
-    child = FakeLayer("layer-1", "Child Layer", LayerType.paint, parent_layer=parent)
+def test_child_layer_inherits_parent_group_metadata(monkeypatch) -> None:
+    monkeypatch.setattr(ai_diffusion_compat, "LayerType", FakeLayerType)
+    parent = FakeLayer("group-1", "Parent Group", FakeLayerType.group)
+    child = FakeLayer("layer-1", "Child Layer", FakeLayerType.paint, parent_layer=parent)
     store = FakeStore(group_records={"group-1": {"export_key": "parent-key", "target_type": "group"}})
 
     targets = ExportTargetScanner().scan_selected_ids(

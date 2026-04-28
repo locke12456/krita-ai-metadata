@@ -5,7 +5,8 @@ from typing import Any
 
 from ..ai_diffusion_compat import active_model
 from ..auto_mapping import AutoMappingService
-from ..capabilities import build_feature_flags
+from ..capabilities import build_feature_flags, refresh_feature_flags
+from ..krita_core_adapter import active_krita_document, selected_krita_nodes
 from ..qt_compat import (
     QCheckBox,
     QComboBox,
@@ -171,9 +172,15 @@ class DockerWindow(QWidget):
         """Refresh active document, layer rows, and sync-map state."""
         self._clear_error()
 
-        self.feature_flags = build_feature_flags()
+        self.feature_flags = refresh_feature_flags()
+        self.runner.feature_flags = self.feature_flags
+        if hasattr(self.runner.resolver, "feature_flags"):
+            self.runner.resolver.feature_flags = self.feature_flags
         self._mode_label.setText(self.feature_flags.mode_label)
-        self._auto_map_button.setEnabled(self.feature_flags.prompt_search_enabled)
+        self._auto_map_button.setEnabled(
+            self.feature_flags.prompt_search_enabled or self.feature_flags.manual_group_enabled
+        )
+        self._group_label.setEnabled(self.feature_flags.manual_group_enabled)
         self._preview_button.setEnabled(self.feature_flags.basic_export_enabled)
         self._export_button.setEnabled(self.feature_flags.basic_export_enabled)
 
@@ -184,6 +191,8 @@ class DockerWindow(QWidget):
             return
 
         if model is None:
+            if self._refresh_manual_only_context():
+                return
             self.document = None
             self.layer_manager = None
             self.sync_map_store = None
@@ -214,6 +223,36 @@ class DockerWindow(QWidget):
         except Exception as exc:
             self._show_error(f"Failed to refresh docker state: {exc}")
 
+    def _refresh_manual_only_context(self) -> bool:
+        """Refresh docker rows from native Krita adapters when AI Diffusion is unavailable."""
+        document_ref = active_krita_document()
+        if document_ref is None:
+            return False
+
+        nodes = selected_krita_nodes()
+        layer_manager = type(
+            "ManualLayerManager",
+            (),
+            {
+                "all": nodes,
+                "active": nodes[0] if nodes else None,
+                "update": lambda self: document_ref.refresh_projection(),
+            },
+        )()
+
+        self.document = document_ref
+        self.layer_manager = layer_manager
+        self.sync_map_store = SyncMapStore(document_ref)
+        self.selection_model.rebuild(layer_manager, self.sync_map_store)
+        self.selection_model.select_layer_ids([node.id_string for node in nodes])
+        self._sync_output_dir_with_document()
+        self._status_label.setText("Manual-only active document loaded.")
+        if self.feature_flags.mode_warning:
+            self._append_report(self.feature_flags.mode_warning)
+        self._render_layer_rows()
+        self._update_labels()
+        return True
+
     def choose_output_dir(self) -> None:
         """Let the user choose the docker export output directory."""
         selected = QFileDialog.getExistingDirectory(
@@ -242,7 +281,7 @@ class DockerWindow(QWidget):
             self._show_error("Auto mapping requires layer manager and sync map context.")
             return
 
-        if not self.feature_flags.prompt_search_enabled:
+        if not self.feature_flags.prompt_search_enabled and not self.feature_flags.manual_group_enabled:
             self._show_error(self.feature_flags.mode_warning or "Prompt search is disabled.")
             return
 
@@ -257,10 +296,11 @@ class DockerWindow(QWidget):
             return
 
         try:
-            result = AutoMappingService(self.layer_manager, self.sync_map_store).auto_map(
-                layers,
-                manual_label=manual_label,
-            )
+            service = AutoMappingService(self.layer_manager, self.sync_map_store)
+            if self.feature_flags.prompt_search_enabled:
+                result = service.auto_map_with_ai_history(layers, manual_label=manual_label)
+            else:
+                result = service.create_manual_group_record(layers, manual_label=manual_label)
             self.sync_map_store.load()
             self.selection_model.rebuild(self.layer_manager, self.sync_map_store)
             self._render_layer_rows()

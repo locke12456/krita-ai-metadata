@@ -1,4 +1,4 @@
-from ai_diffusion.layer import LayerType
+from tests.fakes.fake_ai_diffusion import FakeLayerType
 
 from krita_ai_metadata.auto_mapping import AutoMappingService
 from krita_ai_metadata.sync_map_store import SyncRecord
@@ -16,7 +16,7 @@ class FakeLayer:
         self.name = name
         self.parent_layer = parent_layer
         self.is_root = is_root
-        self.type = LayerType.paint
+        self.type = FakeLayerType.paint
         self.refreshed = False
 
     def refresh(self) -> None:
@@ -216,3 +216,22 @@ def test_empty_manual_label_blocks_auto_mapping() -> None:
     assert result.records == []
     assert result.warnings == ["Please enter a group label before auto mapping."]
     assert store.applied == []
+
+def test_manual_group_record_does_not_use_job_history_snapshot() -> None:
+    layer = FakeLayer("layer-1", "Layer")
+    store = FakeStore()
+    resolver = FakeJobHistoryResolver({"seed": 123, "prompt": "snapshot"})
+    service = AutoMappingService(
+        FakeLayerManager(),
+        store,
+        job_history_resolver=resolver,
+        mover=FakeMover(),
+    )
+
+    result = service.create_manual_group_record([layer], manual_label="manual-label")
+
+    assert result.mapped_count == 1
+    assert result.records[0].job_id == "manual"
+    assert result.records[0].params_snapshot == {}
+    assert resolver.calls == []
+

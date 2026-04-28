@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from krita_ai_metadata.capabilities import FeatureFlags, RuntimeMode
 from krita_ai_metadata.export_target_scanner import ExportTarget
 from krita_ai_metadata.metadata_resolver import MetadataResolver
 
@@ -26,7 +27,21 @@ class FakeLayer:
     is_visible: bool = True
 
 
-def test_metadata_resolver_builds_sidecar_payload():
+def ai_enabled_flags() -> FeatureFlags:
+    return FeatureFlags(
+        mode=RuntimeMode.ai_enabled,
+        mode_label="AI-enabled",
+        mode_warning="",
+        ai_diffusion_available=True,
+        active_ai_model_available=True,
+        prompt_search_enabled=True,
+        ai_metadata_enabled=True,
+        manual_group_enabled=True,
+        basic_export_enabled=True,
+    )
+
+
+def test_metadata_resolver_builds_sidecar_payload(monkeypatch):
     target = ExportTarget(
         layer=FakeLayer(),
         target_type="group",
@@ -65,7 +80,8 @@ def test_metadata_resolver_builds_sidecar_payload():
         },
     )
 
-    metadata = MetadataResolver().resolve(target)
+    monkeypatch.setattr("krita_ai_metadata.metadata_resolver.format_img_metadata", lambda params: "cat\nSeed: 123")
+    metadata = MetadataResolver(feature_flags=ai_enabled_flags()).resolve(target)
 
     assert metadata.has_metadata
     assert "cat" in metadata.a1111_parameters
@@ -85,14 +101,14 @@ def test_metadata_resolver_reports_missing_snapshot():
         record={"target_type": "layer", "export_key": "unresolved"},
     )
 
-    metadata = MetadataResolver().resolve(target)
+    metadata = MetadataResolver(feature_flags=ai_enabled_flags()).resolve(target)
 
     assert not metadata.has_metadata
     assert metadata.warnings
     assert "params_snapshot" in metadata.warnings[0]
 
 
-def test_metadata_resolver_marks_inherited_payload():
+def test_metadata_resolver_marks_inherited_payload(monkeypatch):
     target = ExportTarget(
         layer=FakeLayer(),
         target_type="group",
@@ -116,7 +132,8 @@ def test_metadata_resolver_marks_inherited_payload():
         warnings=["Metadata for layer 'Layer 1' inherited from parent group 'Group 1'."],
     )
 
-    metadata = MetadataResolver().resolve(target)
+    monkeypatch.setattr("krita_ai_metadata.metadata_resolver.format_img_metadata", lambda params: "cat")
+    metadata = MetadataResolver(feature_flags=ai_enabled_flags()).resolve(target)
 
     assert metadata.payload["metadata_inherited"] is True
     assert any("inherited from parent group" in warning for warning in metadata.warnings)

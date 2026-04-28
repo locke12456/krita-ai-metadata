@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .capabilities import FeatureFlags, current_feature_flags
 from .export_manifest import ExportManifest
 from .export_options import ExportOptions
 from .export_policy import ExportDecision, ExportPolicy
@@ -62,9 +63,11 @@ class DockerExportRunner:
         scanner: ExportTargetScanner | None = None,
         resolver: MetadataResolver | None = None,
         renderer: GroupCompositeExporter | None = None,
+        feature_flags: FeatureFlags | None = None,
     ) -> None:
+        self.feature_flags = feature_flags or current_feature_flags()
         self.scanner = scanner or ExportTargetScanner()
-        self.resolver = resolver or MetadataResolver()
+        self.resolver = resolver or MetadataResolver(feature_flags=self.feature_flags)
         self.renderer = renderer or GroupCompositeExporter()
 
     def preview(
@@ -74,6 +77,9 @@ class DockerExportRunner:
         options: ExportOptions,
     ) -> DockerPreviewReport:
         """Build a read-only preview report."""
+        self.feature_flags = current_feature_flags()
+        if hasattr(self.resolver, "feature_flags"):
+            self.resolver.feature_flags = self.feature_flags
         report = DockerPreviewReport(warnings=options.validate())
         targets = self._targets_for_options(layer_manager, sync_map_store, options)
         report.warnings.extend(getattr(self.scanner, "last_warnings", []))
@@ -112,6 +118,9 @@ class DockerExportRunner:
         options: ExportOptions,
     ) -> DockerExportReport:
         """Run docker export through the existing PNG writer pipeline."""
+        self.feature_flags = current_feature_flags()
+        if hasattr(self.resolver, "feature_flags"):
+            self.resolver.feature_flags = self.feature_flags
         report = DockerExportReport(warnings=options.validate())
         if report.warnings:
             report.aborted = True

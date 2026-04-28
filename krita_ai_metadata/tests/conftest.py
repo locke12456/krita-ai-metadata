@@ -129,20 +129,11 @@ if "ai_diffusion" not in sys.modules:
     sys.modules["ai_diffusion"] = ai_diffusion_pkg
 
 
-# ---- ai_diffusion.image -------------------------------------------------
+# ---- ai_diffusion minimal fake modules -------------------------------------
+from tests.fakes.fake_ai_diffusion import FakeBounds, FakeJobParams, FakeJobRegion, FakeLayerType
+
 image_mod = types.ModuleType("ai_diffusion.image")
-
-
-@dataclass(frozen=True)
-class Bounds:
-    x: int = 0
-    y: int = 0
-    width: int = 0
-    height: int = 0
-
-    @property
-    def is_zero(self) -> bool:
-        return self.width == 0 or self.height == 0
+Bounds = FakeBounds
 
 
 class Image:
@@ -156,92 +147,16 @@ image_mod.Image = Image
 sys.modules["ai_diffusion.image"] = image_mod
 
 
-# ---- ai_diffusion.jobs --------------------------------------------------
 jobs_mod = types.ModuleType("ai_diffusion.jobs")
-
-
-@dataclass
-class JobRegion:
-    layer_id: str = ""
-    prompt: str = ""
-    bounds: Bounds = field(default_factory=Bounds)
-    is_background: bool = False
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "JobRegion":
-        bounds = data.get("bounds", Bounds())
-        if isinstance(bounds, (list, tuple)):
-            bounds = Bounds(*bounds)
-        elif isinstance(bounds, dict):
-            bounds = Bounds(**bounds)
-        return cls(
-            layer_id=data.get("layer_id", ""),
-            prompt=data.get("prompt", ""),
-            bounds=bounds,
-            is_background=bool(data.get("is_background", False)),
-        )
-
-
-@dataclass
-class JobParams:
-    bounds: Bounds = field(default_factory=Bounds)
-    name: str = ""
-    regions: list[JobRegion] = field(default_factory=list)
-    metadata: dict[str, Any] = field(default_factory=dict)
-    seed: int = 0
-    has_mask: bool = False
-    is_layered: bool = False
-    frame: tuple[int, int, int] = (0, 0, 0)
-    animation_id: str = ""
-    resize_canvas: bool = False
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "JobParams":
-        bounds = data.get("bounds", Bounds())
-        if isinstance(bounds, (list, tuple)):
-            bounds = Bounds(*bounds)
-        elif isinstance(bounds, dict):
-            bounds = Bounds(**bounds)
-
-        regions = [
-            item if isinstance(item, JobRegion) else JobRegion.from_dict(item)
-            for item in data.get("regions", [])
-        ]
-
-        frame = data.get("frame", (0, 0, 0))
-        if isinstance(frame, list):
-            frame = tuple(frame)
-
-        return cls(
-            bounds=bounds,
-            name=data.get("name", ""),
-            regions=regions,
-            metadata=dict(data.get("metadata", {})),
-            seed=int(data.get("seed", 0) or 0),
-            has_mask=bool(data.get("has_mask", False)),
-            is_layered=bool(data.get("is_layered", False)),
-            frame=frame,
-            animation_id=data.get("animation_id", ""),
-            resize_canvas=bool(data.get("resize_canvas", False)),
-        )
-
-
+JobRegion = FakeJobRegion
+JobParams = FakeJobParams
 jobs_mod.JobRegion = JobRegion
 jobs_mod.JobParams = JobParams
 sys.modules["ai_diffusion.jobs"] = jobs_mod
 
 
-# ---- ai_diffusion.layer -------------------------------------------------
 layer_mod = types.ModuleType("ai_diffusion.layer")
-
-
-class LayerType(Enum):
-    group = "grouplayer"
-    paint = "paintlayer"
-
-    @property
-    def is_image(self) -> bool:
-        return True
+LayerType = FakeLayerType
 
 
 class Layer:
@@ -258,7 +173,6 @@ layer_mod.LayerManager = LayerManager
 sys.modules["ai_diffusion.layer"] = layer_mod
 
 
-# ---- ai_diffusion.document ----------------------------------------------
 document_mod = types.ModuleType("ai_diffusion.document")
 
 
@@ -270,56 +184,26 @@ document_mod.Document = Document
 sys.modules["ai_diffusion.document"] = document_mod
 
 
-# ---- ai_diffusion.text --------------------------------------------------
 text_mod = types.ModuleType("ai_diffusion.text")
 
 
 def create_img_metadata(params: JobParams) -> str:
     prompt = params.metadata.get("prompt") or params.name
     negative = params.metadata.get("negative_prompt", "")
-    sampler = params.metadata.get("sampler", "")
-    steps = params.metadata.get("steps", "")
-    guidance = params.metadata.get("guidance", "")
-    checkpoint = params.metadata.get("checkpoint", "")
-
+    fields = []
+    if params.seed:
+        fields.append(f"Seed: {params.seed}")
     lines = [str(prompt)]
     if negative:
         lines.append(f"Negative prompt: {negative}")
-
-    fields = []
-    if steps != "":
-        fields.append(f"Steps: {steps}")
-    if sampler:
-        fields.append(f"Sampler: {sampler}")
-    if guidance != "":
-        fields.append(f"CFG scale: {guidance}")
-    if params.seed:
-        fields.append(f"Seed: {params.seed}")
-    if checkpoint:
-        fields.append(f"Model: {checkpoint}")
-
     if fields:
         lines.append(", ".join(fields))
-
     return "\n".join(lines)
 
 
 text_mod.create_img_metadata = create_img_metadata
 sys.modules["ai_diffusion.text"] = text_mod
 
-
-# ---- ai_diffusion.util --------------------------------------------------
-util_mod = types.ModuleType("ai_diffusion.util")
-
-
-def trim_text(text: str, max_length: int) -> str:
-    if len(text) > max_length:
-        return text[: max_length - 3] + "..."
-    return text
-
-
-util_mod.trim_text = trim_text
-sys.modules["ai_diffusion.util"] = util_mod
 
 # ---- additional docker/test stubs -----------------------------------------
 # These stubs keep local pytest collection working outside Krita while avoiding

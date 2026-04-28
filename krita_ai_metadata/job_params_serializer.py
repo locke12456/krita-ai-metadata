@@ -4,12 +4,11 @@ from dataclasses import asdict, is_dataclass
 from enum import Enum
 from typing import Any
 
-from ai_diffusion.image import Bounds
-from ai_diffusion.jobs import JobParams, JobRegion
+from .ai_diffusion_compat import deserialize_job_params as compat_deserialize_job_params
 
 
 def _serialize_value(value: Any) -> Any:
-    if isinstance(value, Bounds):
+    if all(hasattr(value, attr) for attr in ("x", "y", "width", "height")):
         return [value.x, value.y, value.width, value.height]
     if isinstance(value, Enum):
         return value.name
@@ -23,7 +22,7 @@ def _serialize_value(value: Any) -> Any:
 
 
 class JobParamsSerializer:
-    def serialize_job_params(self, params: JobParams) -> dict[str, Any]:
+    def serialize_job_params(self, params: Any) -> dict[str, Any]:
         data = {
             "bounds": _serialize_value(params.bounds),
             "name": params.name,
@@ -39,7 +38,7 @@ class JobParamsSerializer:
         }
         return data
 
-    def serialize_job_region(self, region: JobRegion) -> dict[str, Any]:
+    def serialize_job_region(self, region: Any) -> dict[str, Any]:
         return {
             "layer_id": region.layer_id,
             "prompt": region.prompt,
@@ -47,9 +46,9 @@ class JobParamsSerializer:
             "is_background": region.is_background,
         }
 
-    def deserialize_job_params(self, data: dict[str, Any]) -> JobParams:
+    def deserialize_job_params(self, data: dict[str, Any]) -> Any:
         restored = dict(data)
         if isinstance(restored.get("frame"), list):
             restored["frame"] = tuple(restored["frame"])
         restored.pop("inpaint_mode", None)
-        return JobParams.from_dict(restored)
+        return compat_deserialize_job_params(restored)

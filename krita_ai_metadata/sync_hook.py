@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ai_diffusion.layer import Layer, LayerType
-
+from .ai_diffusion_compat import is_group_layer
 from .group_key import GroupKeyResolver
 from .job_params_serializer import JobParamsSerializer
 from .layer_move_adapter import LayerMoveAdapter
@@ -82,7 +81,7 @@ class SyncHookAdapter:
         if self.auto_group and target_layers:
             group_layer = self._ensure_group(model, key.group_name)
             mover = LayerMoveAdapter(model.layers)
-            moved_layers: list[Layer] = []
+            moved_layers: list[Any] = []
             for layer in target_layers:
                 moved_layers.append(mover.move_to_group(layer, group_layer))
             model.layers.update()
@@ -108,11 +107,11 @@ class SyncHookAdapter:
         store.record_apply(record)
         return result
 
-    def _layer_ids(self, layers: list[Layer]) -> list[str]:
+    def _layer_ids(self, layers: list[Any]) -> list[str]:
         return [layer.id_string for layer in layers]
 
-    def _ensure_group(self, model: Any, group_name: str) -> Layer:
+    def _ensure_group(self, model: Any, group_name: str) -> Any:
         for layer in model.layers.all:
-            if layer.type is LayerType.group and layer.name == group_name:
+            if is_group_layer(layer) and layer.name == group_name:
                 return layer
         return model.layers.create_group(group_name)

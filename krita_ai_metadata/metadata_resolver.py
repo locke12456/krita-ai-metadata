@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from ai_diffusion.text import create_img_metadata
-
+from .ai_diffusion_compat import format_img_metadata
+from .capabilities import FeatureFlags, current_feature_flags
 from .export_target_scanner import ExportTarget
 from .job_params_serializer import JobParamsSerializer
 
@@ -30,12 +30,31 @@ class ResolvedMetadata:
 class MetadataResolver:
     """Resolve sync-map records into PNG parameters and sidecar payloads."""
 
-    def __init__(self, serializer: JobParamsSerializer | None = None):
+    def __init__(
+        self,
+        serializer: JobParamsSerializer | None = None,
+        feature_flags: FeatureFlags | None = None,
+    ):
         self._serializer = serializer or JobParamsSerializer()
+        self.feature_flags = feature_flags or current_feature_flags()
 
     def resolve(self, target: ExportTarget) -> ResolvedMetadata:
         """Resolve metadata for an export target."""
         warnings = list(target.warnings)
+
+        if not self.feature_flags.prompt_search_enabled:
+            if self.feature_flags.mode_warning:
+                warnings.append(self.feature_flags.mode_warning)
+            payload = self._payload(target, target.record, "", warnings)
+            return ResolvedMetadata(
+                target=target,
+                key=target.key,
+                record=target.record,
+                params=None,
+                a1111_parameters="",
+                payload=payload,
+                warnings=warnings,
+            )
 
         if target.record is None:
             payload = self._payload(target, None, "", warnings)
@@ -69,7 +88,7 @@ class MetadataResolver:
 
         try:
             params = self._serializer.deserialize_job_params(params_snapshot)
-            parameters = create_img_metadata(params)
+            parameters = format_img_metadata(params)
         except Exception as exc:
             warnings.append(f"Failed to format metadata for '{target.key}': {exc}")
             params = None
@@ -124,6 +143,11 @@ class MetadataResolver:
             "seed": int(record.get("seed", 0) or 0),
             "params_snapshot": dict(record.get("params_snapshot", {})),
             "a1111_parameters": parameters,
+            "mode": self.feature_flags.mode.value,
+            "mode_label": self.feature_flags.mode_label,
+            "ai_metadata_available": self.feature_flags.ai_metadata_enabled and bool(parameters),
+            "prompt_search_enabled": self.feature_flags.prompt_search_enabled,
+            "mode_warning": self.feature_flags.mode_warning,
             "children": self._children_payload(target),
             "warnings": list(warnings or target.warnings),
             "metadata_inherited": any("inherited from parent group" in warning for warning in target.warnings),

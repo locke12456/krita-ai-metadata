@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ai_diffusion.document import KritaDocument
+from .ai_diffusion_compat import active_document_instance
 
 
 class ModelAccessAdapter:
@@ -18,7 +18,10 @@ class ModelAccessAdapter:
         document = getattr(model, "document", None)
         if document is None:
             return None
-        active_document = KritaDocument.active_instance()
+        try:
+            active_document = active_document_instance()
+        except Exception:
+            active_document = None
         if active_document is not None and document != active_document:
             return None
         if not hasattr(model, "apply_generated_result"):

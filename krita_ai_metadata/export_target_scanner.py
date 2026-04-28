@@ -4,8 +4,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from ai_diffusion.layer import Layer, LayerManager, LayerType
-
+from .ai_diffusion_compat import is_group_layer, is_image_layer
 from .krita_view_adapter import KritaViewAdapter
 
 
@@ -21,7 +20,7 @@ class ExportMode(str, Enum):
 class ExportTarget:
     """Resolved layer or group export target."""
 
-    layer: Layer
+    layer: Any
     target_type: str
     key: str
     record: dict[str, Any] | None
@@ -42,7 +41,7 @@ class ExportTargetScanner:
 
     def scan(
         self,
-        layer_manager: LayerManager,
+        layer_manager: Any,
         sync_map_store: Any,
         mode: ExportMode = ExportMode.selected,
         include_invisible_targets: bool = False,
@@ -61,7 +60,7 @@ class ExportTargetScanner:
 
     def scan_selected_ids(
         self,
-        layer_manager: LayerManager,
+        layer_manager: Any,
         sync_map_store: Any,
         selected_layer_ids: list[str],
         include_invisible_targets: bool = False,
@@ -91,10 +90,10 @@ class ExportTargetScanner:
 
     def _candidate_layers(
         self,
-        layer_manager: LayerManager,
+        layer_manager: Any,
         mode: ExportMode,
         include_invisible_targets: bool = False,
-    ) -> list[Layer]:
+    ) -> list[Any]:
         """Return candidate layers for one export mode."""
         if mode == ExportMode.selected:
             selected = self._view_adapter.unique_selected_layers(layer_manager)
@@ -117,7 +116,7 @@ class ExportTargetScanner:
 
     def _target_from_layer(
         self,
-        layer: Layer,
+        layer: Any,
         sync_map_store: Any,
         warnings: list[str] | None = None,
     ) -> ExportTarget:
@@ -145,7 +144,7 @@ class ExportTargetScanner:
 
     def _resolve_record(
         self,
-        layer: Layer,
+        layer: Any,
         sync_map_store: Any,
     ) -> tuple[dict[str, Any] | None, str | None]:
         """Resolve only metadata that is explicitly linked to this layer target."""
@@ -183,21 +182,21 @@ class ExportTargetScanner:
             return True
         return isinstance(layer_ids, list) and layer_id in layer_ids
 
-    def _is_exportable_layer(self, layer: Layer) -> bool:
+    def _is_exportable_layer(self, layer: Any) -> bool:
         """Return True when the layer can be exported as image content."""
-        return layer.type.is_image and not layer.bounds.is_zero
+        return is_image_layer(layer) and not layer.bounds.is_zero
 
-    def _target_type(self, layer: Layer, record: dict[str, Any] | None) -> str:
+    def _target_type(self, layer: Any, record: dict[str, Any] | None) -> str:
         """Return the effective target type."""
         if record is not None:
             value = record.get("target_type")
             if isinstance(value, str) and value:
                 return value
-        if layer.type == LayerType.group:
+        if is_group_layer(layer):
             return "group"
         return "layer"
 
-    def _target_key(self, layer: Layer, record: dict[str, Any] | None) -> str:
+    def _target_key(self, layer: Any, record: dict[str, Any] | None) -> str:
         """Return export key from sync record or a safe fallback."""
         if record is not None:
             value = record.get("export_key") or record.get("key")
@@ -205,7 +204,7 @@ class ExportTargetScanner:
                 return value
         return self._fallback_key(layer)
 
-    def _fallback_key(self, layer: Layer) -> str:
+    def _fallback_key(self, layer: Any) -> str:
         """Build a deterministic fallback key for unresolved targets."""
         raw = layer.name.strip() or layer.id_string
         safe = "".join(ch if ch.isalnum() or ch in ("-", "_") else "-" for ch in raw)

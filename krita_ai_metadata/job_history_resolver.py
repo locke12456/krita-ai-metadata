@@ -2,11 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ai_diffusion.jobs import JobState
-from ai_diffusion.layer import Layer
-from ai_diffusion.root import root
-from ai_diffusion.util import trim_text
-
+from .ai_diffusion_compat import active_model, is_finished_job, trim_prompt
 from .job_params_serializer import JobParamsSerializer
 
 
@@ -16,13 +12,13 @@ class JobHistoryResolver:
     def __init__(self, serializer: JobParamsSerializer | None = None) -> None:
         self.serializer = serializer or JobParamsSerializer()
 
-    def params_snapshot_for_layers(self, layers: list[Layer]) -> dict[str, Any]:
+    def params_snapshot_for_layers(self, layers: list[Any]) -> dict[str, Any]:
         params = self.params_for_layers(layers)
         if params is None:
             return {}
         return self.serializer.serialize_job_params(params)
 
-    def params_for_layers(self, layers: list[Layer]):
+    def params_for_layers(self, layers: list[Any]):
         jobs = self._jobs_newest_first()
         if not jobs:
             return None
@@ -38,14 +34,14 @@ class JobHistoryResolver:
 
     def _jobs_newest_first(self):
         try:
-            model = root.model_for_active_document()
+            model = active_model()
         except Exception:
             return []
         if model is None:
             return []
 
         jobs = list(getattr(model, "jobs", []))
-        finished = [job for job in jobs if getattr(job, "state", None) is JobState.finished]
+        finished = [job for job in jobs if is_finished_job(job)]
         return list(reversed(finished or jobs))
 
     def _matches_names(self, params, names: list[str]) -> bool:
@@ -73,7 +69,7 @@ class JobHistoryResolver:
             result.add(f"[Upscale] {prompt} ({seed})")
 
         if getattr(params, "is_layered", False):
-            base_prompt = trim_text(str(getattr(params, "name", "") or ""), 200)
+            base_prompt = trim_prompt(str(getattr(params, "name", "") or ""), 200)
             for index in range(1, 17):
                 result.add(f"[Layer {index}] {base_prompt} ({seed})")
 
@@ -84,7 +80,7 @@ class JobHistoryResolver:
         prompts: set[str] = set()
         prompt_name = str(getattr(params, "name", "") or "")
         if prompt_name:
-            prompts.add(trim_text(prompt_name, 200))
+            prompts.add(trim_prompt(prompt_name, 200))
 
         for region in getattr(params, "regions", []) or []:
             region_prompt = str(getattr(region, "prompt", "") or "")

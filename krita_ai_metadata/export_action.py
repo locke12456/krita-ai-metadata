@@ -4,16 +4,24 @@ from pathlib import Path
 from typing import Any
 
 from .ai_diffusion_compat import active_document
+from .capabilities import build_feature_flags
 from .export_target_scanner import ExportMode
 from .qt_compat import QFileDialog, QMessageBox
 from .job_history_resolver import JobHistoryResolver
+from .krita_core_adapter import active_krita_document, selected_krita_nodes
 from .sync_map_store import SyncMapStore
 from .ui.export_dialog import ExportDialog, ExportDialogConfig
 
 
 class ExportAction:
     def run_from_krita(self) -> None:
-        document = active_document()
+        try:
+            document = active_document()
+            manual_only = False
+        except Exception:
+            document = active_krita_document()
+            manual_only = True
+
         if document is None:
             QMessageBox.warning(None, "Krita AI Metadata Export", "No active Krita document.")
             return
@@ -32,7 +40,22 @@ class ExportAction:
             return
 
         store = SyncMapStore(document)
-        self._repair_empty_selected_records(document, store)
+        feature_flags = build_feature_flags()
+        if feature_flags.prompt_search_enabled and not manual_only:
+            self._repair_empty_selected_records(document, store)
+
+        layer_manager = document.layers
+        if manual_only:
+            nodes = selected_krita_nodes()
+            layer_manager = type(
+                "ManualLayerManager",
+                (),
+                {
+                    "all": nodes,
+                    "active": nodes[0] if nodes else None,
+                    "update": lambda self: document.refresh_projection(),
+                },
+            )()
 
         config = ExportDialogConfig(
             output_dir=Path(output_dir),
@@ -41,7 +64,7 @@ class ExportAction:
             allow_unresolved=False,
             write_manifest=True,
         )
-        report = ExportDialog(config).run(document.layers, store)
+        report = ExportDialog(config).run(layer_manager, store)
 
         if report.exported_count <= 0:
             QMessageBox.warning(

@@ -3,8 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from ai_diffusion.layer import Layer, LayerManager
-
 from .group_key import GroupKey, GroupKeyResolver
 from .job_history_resolver import JobHistoryResolver
 from .layer_move_adapter import LayerMoveAdapter
@@ -29,7 +27,7 @@ class AutoMappingService:
 
     def __init__(
         self,
-        layer_manager: LayerManager,
+        layer_manager: Any,
         sync_map_store: Any,
         job_history_resolver: JobHistoryResolver | None = None,
         mover: LayerMoveAdapter | None = None,
@@ -41,8 +39,12 @@ class AutoMappingService:
         self.mover = mover or LayerMoveAdapter(layer_manager)
         self.group_key_resolver = group_key_resolver or GroupKeyResolver()
 
-    def auto_map(self, layers: list[Layer], manual_label: str = "") -> AutoMappingResult:
+    def auto_map(self, layers: list[Any], manual_label: str = "") -> AutoMappingResult:
         """Create or repair group-backed sync records for selected layers."""
+        return self.auto_map_with_ai_history(layers, manual_label=manual_label)
+
+    def auto_map_with_ai_history(self, layers: list[Any], manual_label: str = "") -> AutoMappingResult:
+        """Create or repair group-backed sync records using AI job history."""
         result = AutoMappingResult()
         label = manual_label.strip()
 
@@ -60,11 +62,11 @@ class AutoMappingService:
         self.layer_manager.update()
         return result
 
-    def repair(self, layers: list[Layer], manual_label: str = "") -> AutoMappingResult:
+    def repair(self, layers: list[Any], manual_label: str = "") -> AutoMappingResult:
         """Repair selected layer mappings through the same verified headless path."""
         return self.auto_map(layers, manual_label=manual_label)
 
-    def _map_one_layer(self, layer: Layer, manual_label: str) -> tuple[SyncRecord | None, list[str]]:
+    def _map_one_layer(self, layer: Any, manual_label: str) -> tuple[SyncRecord | None, list[str]]:
         warnings: list[str] = []
 
         if layer.is_root:
@@ -128,8 +130,8 @@ class AutoMappingService:
 
     def _record_from_layer_record(
         self,
-        layer: Layer,
-        group: Layer,
+        layer: Any,
+        group: Any,
         source_record: SyncRecord,
         group_key: GroupKey,
     ) -> SyncRecord:
@@ -151,8 +153,8 @@ class AutoMappingService:
 
     def _record_from_snapshot(
         self,
-        layer: Layer,
-        group: Layer,
+        layer: Any,
+        group: Any,
         snapshot: dict[str, Any],
         group_key: GroupKey,
     ) -> SyncRecord:
@@ -198,7 +200,63 @@ class AutoMappingService:
     def _next_sync_index(self) -> int:
         return self.sync_map_store.allocate_sync_index()
 
-    def _fallback_export_key(self, layer: Layer) -> str:
+    def create_manual_group_record(self, layers: list[Any], manual_label: str = "") -> AutoMappingResult:
+        """Create manual-only group sync records without reading job history snapshots."""
+        result = AutoMappingResult()
+        label = manual_label.strip()
+
+        if not label:
+            result.warnings.append("Please enter a group label before creating a manual group record.")
+            return result
+
+        for layer in layers:
+            if getattr(layer, "is_root", False):
+                result.warnings.append(f"Skipped root layer '{layer.name}'.")
+                continue
+
+            existing = self.sync_map_store.resolve_group(
+                group_id=layer.id_string,
+                group_name=layer.name,
+            )
+            if existing is not None:
+                result.records.append(existing)
+                continue
+
+            sync_index = self._next_sync_index()
+            group_key = self.group_key_resolver.resolve(
+                sync_index=sync_index,
+                manual_label=label,
+                image_index=0,
+                job_id="manual",
+                seed=0,
+            )
+            group = self.mover.create_group_for_layer(layer, group_key.group_name)
+            self.layer_manager.update()
+            group.refresh()
+
+            record = SyncRecord(
+                target_type="group",
+                export_key=group_key.key,
+                layer_ids=[layer.id_string],
+                job_id="manual",
+                image_index=0,
+                seed=0,
+                params_snapshot={},
+                group_id=group.id_string,
+                group_name=group_key.group_name,
+                job_id_short="manual",
+                sync_index=group_key.sync_index,
+                manual_label=group_key.manual_label,
+            )
+            applied = self.sync_map_store.record_apply(record)
+            self.sync_map_store.load()
+            result.records.append(applied)
+
+        self.sync_map_store.load()
+        self.layer_manager.update()
+        return result
+
+    def _fallback_export_key(self, layer: Any) -> str:
         raw = layer.name.strip() or layer.id_string
         safe = "".join(ch if ch.isalnum() or ch in ("-", "_") else "-" for ch in raw)
         return safe.strip("-") or layer.id_string.strip("{}")

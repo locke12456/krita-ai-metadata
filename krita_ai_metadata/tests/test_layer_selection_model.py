@@ -1,7 +1,8 @@
 from pathlib import Path
 from types import SimpleNamespace
 
-from ai_diffusion.layer import LayerType
+from krita_ai_metadata import ai_diffusion_compat
+from tests.fakes.fake_ai_diffusion import FakeFakeLayerType
 
 from krita_ai_metadata.export_target_scanner import ExportMode
 from krita_ai_metadata.layer_selection_model import LayerSelectionModel
@@ -12,7 +13,7 @@ class FakeLayer:
         self,
         layer_id: str,
         name: str,
-        layer_type: LayerType,
+        layer_type: FakeLayerType,
         visible: bool = True,
         parent_layer=None,
         is_root: bool = False,
@@ -47,11 +48,12 @@ class FakeViewAdapter:
         return list(self.layers)
 
 
-def test_rebuild_marks_synced_inherited_and_unsynced_rows() -> None:
-    root = FakeLayer("root", "Root", LayerType.group, is_root=True)
-    synced_group = FakeLayer("group-1", "Synced Group", LayerType.group, parent_layer=root)
-    inherited_child = FakeLayer("child-1", "Inherited Child", LayerType.paint, parent_layer=synced_group)
-    unsynced = FakeLayer("layer-2", "Unsynced", LayerType.paint, parent_layer=root)
+def test_rebuild_marks_synced_inherited_and_unsynced_rows(monkeypatch) -> None:
+    monkeypatch.setattr(ai_diffusion_compat, "LayerType", FakeLayerType)
+    root = FakeLayer("root", "Root", FakeLayerType.group, is_root=True)
+    synced_group = FakeLayer("group-1", "Synced Group", FakeLayerType.group, parent_layer=root)
+    inherited_child = FakeLayer("child-1", "Inherited Child", FakeLayerType.paint, parent_layer=synced_group)
+    unsynced = FakeLayer("layer-2", "Unsynced", FakeLayerType.paint, parent_layer=root)
     manager = SimpleNamespace(all=[root, synced_group, inherited_child, unsynced])
     store = FakeStore(group_records={"group-1": {"export_key": "group"}})
 
@@ -66,9 +68,10 @@ def test_rebuild_marks_synced_inherited_and_unsynced_rows() -> None:
     assert states["layer-2"] == "unsynced"
 
 
-def test_select_layer_ids_deduplicates_and_tracks_selected_groups() -> None:
-    group = FakeLayer("group-1", "Group", LayerType.group)
-    layer = FakeLayer("layer-1", "Layer", LayerType.paint)
+def test_select_layer_ids_deduplicates_and_tracks_selected_groups(monkeypatch) -> None:
+    monkeypatch.setattr(ai_diffusion_compat, "LayerType", FakeLayerType)
+    group = FakeLayer("group-1", "Group", FakeLayerType.group)
+    layer = FakeLayer("layer-1", "Layer", FakeLayerType.paint)
     manager = SimpleNamespace(all=[group, layer])
     model = LayerSelectionModel()
     model.rebuild(manager, FakeStore())
@@ -81,7 +84,7 @@ def test_select_layer_ids_deduplicates_and_tracks_selected_groups() -> None:
 
 
 def test_import_krita_selection_copies_explicit_ids() -> None:
-    layer = FakeLayer("layer-1", "Layer", LayerType.paint)
+    layer = FakeLayer("layer-1", "Layer", FakeLayerType.paint)
     model = LayerSelectionModel()
 
     model.import_krita_selection(
@@ -92,9 +95,10 @@ def test_import_krita_selection_copies_explicit_ids() -> None:
     assert model.selected_layer_ids == ["layer-1"]
 
 
-def test_filtered_rows_supports_sync_visibility_and_type_filters() -> None:
-    synced_group = FakeLayer("group-1", "Group", LayerType.group, visible=True)
-    hidden_layer = FakeLayer("layer-1", "Hidden", LayerType.paint, visible=False)
+def test_filtered_rows_supports_sync_visibility_and_type_filters(monkeypatch) -> None:
+    monkeypatch.setattr(ai_diffusion_compat, "LayerType", FakeLayerType)
+    synced_group = FakeLayer("group-1", "Group", FakeLayerType.group, visible=True)
+    hidden_layer = FakeLayer("layer-1", "Hidden", FakeLayerType.paint, visible=False)
     manager = SimpleNamespace(all=[synced_group, hidden_layer])
     store = FakeStore(group_records={"group-1": {"export_key": "group"}})
     model = LayerSelectionModel()
