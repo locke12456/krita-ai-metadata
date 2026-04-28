@@ -6,7 +6,7 @@ from typing import Any
 from ..ai_diffusion_compat import active_model
 from ..auto_mapping import AutoMappingService
 from ..capabilities import build_feature_flags, refresh_feature_flags
-from ..krita_core_adapter import active_krita_document, selected_krita_nodes
+from ..krita_core_adapter import active_krita_document, all_krita_nodes, selected_krita_nodes
 from ..qt_compat import (
     QCheckBox,
     QComboBox,
@@ -184,9 +184,23 @@ class DockerWindow(QWidget):
         self._preview_button.setEnabled(self.feature_flags.basic_export_enabled)
         self._export_button.setEnabled(self.feature_flags.basic_export_enabled)
 
+        if not self.feature_flags.prompt_search_enabled:
+            if self._refresh_manual_only_context():
+                return
+            self.document = None
+            self.layer_manager = None
+            self.sync_map_store = None
+            self.selection_model.rows = []
+            self._status_label.setText("No active document.")
+            self._render_layer_rows()
+            self._update_labels()
+            return
+
         try:
             model = active_model()
         except Exception as exc:
+            if self._refresh_manual_only_context():
+                return
             self._show_error(f"Unable to read active document: {exc}")
             return
 
@@ -229,13 +243,15 @@ class DockerWindow(QWidget):
         if document_ref is None:
             return False
 
-        nodes = selected_krita_nodes()
+        all_nodes = all_krita_nodes(document_ref)
+        selected_nodes = selected_krita_nodes()
+        active = selected_nodes[0] if selected_nodes else (all_nodes[0] if all_nodes else None)
         layer_manager = type(
             "ManualLayerManager",
             (),
             {
-                "all": nodes,
-                "active": nodes[0] if nodes else None,
+                "all": all_nodes,
+                "active": active,
                 "update": lambda self: document_ref.refresh_projection(),
             },
         )()
@@ -244,7 +260,7 @@ class DockerWindow(QWidget):
         self.layer_manager = layer_manager
         self.sync_map_store = SyncMapStore(document_ref)
         self.selection_model.rebuild(layer_manager, self.sync_map_store)
-        self.selection_model.select_layer_ids([node.id_string for node in nodes])
+        self.selection_model.select_layer_ids([node.id_string for node in selected_nodes])
         self._sync_output_dir_with_document()
         self._status_label.setText("Manual-only active document loaded.")
         if self.feature_flags.mode_warning:

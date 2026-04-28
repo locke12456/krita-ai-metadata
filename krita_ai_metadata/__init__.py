@@ -11,6 +11,27 @@ except Exception:  # pragma: no cover - exercised by local test stubs
     Krita = None
 
 
+def _dock_right_position():
+    """Resolve Krita 5/6 compatible docker right-side position."""
+    if DockWidgetFactoryBase is None:
+        return None
+
+    direct = getattr(DockWidgetFactoryBase, "DockRight", None)
+    if direct is not None:
+        return direct
+
+    for container_name in ("DockPosition", "DockWidgetArea"):
+        container = getattr(DockWidgetFactoryBase, container_name, None)
+        if container is None:
+            continue
+        for member_name in ("DockRight", "RightDockWidgetArea", "RightDockWidget"):
+            value = getattr(container, member_name, None)
+            if value is not None:
+                return value
+
+    return None
+
+
 def _register_krita_plugin() -> None:
     if Krita is None or DockWidgetFactory is None or DockWidgetFactoryBase is None:
         return
@@ -38,10 +59,14 @@ def _register_krita_plugin() -> None:
         except Exception:
             return
 
+        dock_right = _dock_right_position()
+        if dock_right is None:
+            return
+
         app.addDockWidgetFactory(
             DockWidgetFactory(
                 "kritaAIMetadataExport",
-                DockWidgetFactoryBase.DockRight,
+                dock_right,
                 KritaAIMetadataExportDocker,
             )
         )

@@ -235,9 +235,38 @@ class KritaRenderedImage:
 
 def active_krita_document() -> KritaDocumentRef | None:
     document = Krita.instance().activeDocument()
-    if document is None or document.activeNode() is None:
+    if document is None:
         return None
     return KritaDocumentRef(document)
+
+
+def all_krita_nodes(document_ref: KritaDocumentRef | None = None) -> list[KritaNodeRef]:
+    """Return all native Krita nodes below the document root for manual-only mode."""
+    document_ref = document_ref or active_krita_document()
+    if document_ref is None:
+        return []
+
+    try:
+        root = document_ref.root_node()
+    except Exception:
+        return []
+
+    result: list[KritaNodeRef] = []
+
+    def visit(node: Any) -> None:
+        if node is None:
+            return
+        node_ref = KritaNodeRef(node, document_ref)
+        result.append(node_ref)
+        try:
+            children = list(node.childNodes() or [])
+        except Exception:
+            children = []
+        for child in children:
+            visit(child)
+
+    visit(root)
+    return result
 
 
 def selected_krita_nodes() -> list[KritaNodeRef]:
