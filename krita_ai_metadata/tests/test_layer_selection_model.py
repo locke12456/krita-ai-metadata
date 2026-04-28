@@ -68,6 +68,20 @@ def test_rebuild_marks_synced_inherited_and_unsynced_rows(monkeypatch) -> None:
     assert states["layer-2"] == "unsynced"
 
 
+def test_rebuild_accepts_manual_only_string_layer_types() -> None:
+    root = FakeLayer("root", "Root", "grouplayer", is_root=True)
+    layer = FakeLayer("layer-1", "Native Paint", "paintlayer", parent_layer=root)
+    manager = SimpleNamespace(all=[root, layer])
+
+    model = LayerSelectionModel()
+    model.rebuild(manager, FakeStore())
+
+    assert len(model.rows) == 1
+    assert model.rows[0].layer_id == "layer-1"
+    assert model.rows[0].layer_type == "paintlayer"
+    assert model.rows[0].is_group is False
+
+
 def test_select_layer_ids_deduplicates_and_tracks_selected_groups(monkeypatch) -> None:
     monkeypatch.setattr(ai_diffusion_compat, "LayerType", FakeLayerType)
     group = FakeLayer("group-1", "Group", FakeLayerType.group)

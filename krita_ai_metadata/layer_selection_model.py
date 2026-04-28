@@ -162,7 +162,7 @@ class LayerSelectionModel:
         return LayerSelectionRow(
             layer_id=layer.id_string,
             name=layer.name,
-            layer_type=layer.type.value,
+            layer_type=str(getattr(getattr(layer, "type", ""), "value", getattr(layer, "type", ""))),
             visible=layer.is_visible,
             is_group=is_group_layer(layer),
             synced=synced,
