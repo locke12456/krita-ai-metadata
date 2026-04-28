@@ -56,3 +56,37 @@ def test_metadata_resolver_emits_manual_only_mode_fields() -> None:
     assert metadata.payload["prompt_search_enabled"] is False
     assert metadata.payload["mode_warning"] == ""
     assert metadata.warnings == []
+
+
+def test_metadata_resolver_accepts_string_child_layer_type() -> None:
+    flags = FeatureFlags(
+        mode=RuntimeMode.manual_only,
+        mode_label="Manual metadata export",
+        mode_warning="",
+        ai_diffusion_available=False,
+        active_ai_model_available=False,
+        prompt_search_enabled=False,
+        ai_metadata_enabled=False,
+        manual_group_enabled=True,
+        basic_export_enabled=True,
+    )
+    child = FakeLayer(id_string="{child-1}", name="Child 1")
+    child.type = "paintlayer"
+    layer = FakeLayer(id_string="{group-1}", name="Group 1", child_layers=[child])
+    target = ExportTarget(
+        layer=layer,
+        target_type="group",
+        key="manual-group",
+        record=None,
+    )
+
+    metadata = MetadataResolver(feature_flags=flags).resolve(target)
+
+    assert metadata.payload["children"] == [
+        {
+            "id": "{child-1}",
+            "name": "Child 1",
+            "type": "paintlayer",
+            "visible": True,
+        }
+    ]

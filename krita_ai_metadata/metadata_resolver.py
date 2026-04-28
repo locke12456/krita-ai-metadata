@@ -159,8 +159,16 @@ class MetadataResolver:
                 {
                     "id": child.id_string,
                     "name": child.name,
-                    "type": child.type.value,
+                    "type": self._layer_type_value(child),
                     "visible": child.is_visible,
                 }
             )
         return children
+
+    def _layer_type_value(self, layer: Any) -> str:
+        """Return a stable type value for AI wrapper layers and native Krita node refs."""
+        layer_type = getattr(layer, "type", "")
+        value = getattr(layer_type, "value", layer_type)
+        if value is None:
+            return ""
+        return str(value)
