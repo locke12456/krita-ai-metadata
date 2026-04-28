@@ -16,7 +16,10 @@ def test_init_registers_extension_and_docker_factory() -> None:
     assert "app.addDockWidgetFactory(" in source
     assert "DockWidgetFactory(" in source
     assert '"kritaAIMetadataExport"' in source
-    assert "DockWidgetFactoryBase.DockRight" in source
+    assert "def _dock_right_position()" in source
+    assert 'getattr(DockWidgetFactoryBase, "DockRight", None)' in source
+    assert '"DockPosition"' in source
+    assert '"DockWidgetArea"' in source
     assert "KritaAIMetadataExportDocker" in source
 
 

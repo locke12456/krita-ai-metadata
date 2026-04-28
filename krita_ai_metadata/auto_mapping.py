@@ -89,8 +89,14 @@ class AutoMappingService:
             )
 
         source_record = self.sync_map_store.resolve_layer(layer.id_string)
+        source_record_is_direct_layer = (
+            source_record is not None and getattr(source_record, "target_type", "") == "layer"
+        )
+        source_record_is_stale_group = (
+            source_record is not None and getattr(source_record, "target_type", "") == "group"
+        )
 
-        if parent_record is not None and source_record is not None and parent_record is not source_record:
+        if parent_record is not None and source_record_is_direct_layer and parent_record is not source_record:
             return None, [
                 f"Ambiguous metadata for layer '{layer.name}': layer record and parent group record both exist."
             ]
@@ -103,9 +109,11 @@ class AutoMappingService:
         snapshot: dict[str, Any] = {}
         group_key: GroupKey | None = None
 
-        if source_record is not None:
+        if source_record_is_direct_layer:
             group_key = self._group_key_for_record(source_record, manual_label)
         else:
+            if source_record_is_stale_group:
+                warnings.append(f"Ignored stale group metadata for layer '{layer.name}'.")
             snapshot = self.job_history_resolver.params_snapshot_for_layers([layer])
             if snapshot:
                 group_key = self._group_key_from_snapshot(snapshot, manual_label)
@@ -118,7 +126,7 @@ class AutoMappingService:
         self.layer_manager.update()
         group.refresh()
 
-        if source_record is not None:
+        if source_record_is_direct_layer:
             record = self._record_from_layer_record(layer, group, source_record, group_key)
             applied = self.sync_map_store.record_apply(record)
             self.sync_map_store.load()

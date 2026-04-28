@@ -31,8 +31,8 @@ class FakeLayer:
 def test_metadata_resolver_emits_manual_only_mode_fields() -> None:
     flags = FeatureFlags(
         mode=RuntimeMode.manual_only,
-        mode_label="Manual-only (Krita AI Diffusion unavailable)",
-        mode_warning="Krita AI Diffusion unavailable; prompt search disabled.",
+        mode_label="Manual metadata export",
+        mode_warning="",
         ai_diffusion_available=False,
         active_ai_model_available=False,
         prompt_search_enabled=False,
@@ -51,8 +51,8 @@ def test_metadata_resolver_emits_manual_only_mode_fields() -> None:
 
     assert metadata.has_metadata is False
     assert metadata.payload["mode"] == "manual_only"
-    assert metadata.payload["mode_label"] == "Manual-only (Krita AI Diffusion unavailable)"
+    assert metadata.payload["mode_label"] == "Manual metadata export"
     assert metadata.payload["ai_metadata_available"] is False
     assert metadata.payload["prompt_search_enabled"] is False
-    assert metadata.payload["mode_warning"] == "Krita AI Diffusion unavailable; prompt search disabled."
-    assert "Krita AI Diffusion unavailable; prompt search disabled." in metadata.warnings
+    assert metadata.payload["mode_warning"] == ""
+    assert metadata.warnings == []

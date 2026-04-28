@@ -189,6 +189,42 @@ def test_ambiguous_layer_and_parent_records_warns_and_skips() -> None:
     assert store.applied == []
 
 
+def test_stale_group_layer_record_is_ignored_and_seed_is_re_resolved() -> None:
+    layer = FakeLayer("layer-1", "[Generated] true seed prompt (222)")
+    stale_group_record = make_record(
+        target_type="group",
+        group_id="deleted-group",
+        group_name="[0001] - old-group",
+    )
+    stale_group_record.seed = 111
+    stale_group_record.params_snapshot = {"seed": 111, "prompt": "stale"}
+    store = FakeStore()
+    store.layer_records["layer-1"] = stale_group_record
+    resolver = FakeJobHistoryResolver(
+        {
+            "job_id": "job-real",
+            "image_index": 0,
+            "seed": 222,
+            "prompt": "true seed prompt",
+        }
+    )
+    service = AutoMappingService(
+        FakeLayerManager(),
+        store,
+        job_history_resolver=resolver,
+        mover=FakeMover(),
+    )
+
+    result = service.auto_map([layer], manual_label="chibi")
+
+    assert result.mapped_count == 1
+    assert result.records[0].seed == 222
+    assert result.records[0].job_id == "job-real"
+    assert result.records[0].params_snapshot["prompt"] == "true seed prompt"
+    assert resolver.calls == [[layer]]
+    assert result.warnings == ["Ignored stale group metadata for layer ' [Generated] true seed prompt (222)'.".replace("' [", "'[")]
+
+
 def test_repair_uses_auto_map_path() -> None:
     layer = FakeLayer("layer-1", "Layer")
     store = FakeStore()
