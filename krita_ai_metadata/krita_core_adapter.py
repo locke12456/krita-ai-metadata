@@ -379,6 +379,255 @@ def move_nodes_to_group(
     document_ref.refresh_projection()
 
 
+def _native_node(layer_ref: Any) -> Any:
+    """Return the native Krita node for a wrapper or native node input."""
+    return getattr(layer_ref, "node", layer_ref)
+
+
+def _document_ref_for_layer(layer_ref: Any) -> KritaDocumentRef | None:
+    """Resolve the document wrapper from a layer wrapper when possible."""
+    document_ref = getattr(layer_ref, "document_ref", None)
+    if document_ref is not None:
+        return document_ref
+    return active_krita_document()
+
+
+def _child_nodes(parent_node: Any) -> list[Any]:
+    """Return parent children in Krita's layer order.
+
+    The existing krita-ai-diffusion LayerManager treats childNodes() as
+    bottom-to-top order: the last child is top-most, and addChildNode(node, None)
+    moves a layer to the top.
+    """
+    try:
+        return list(parent_node.childNodes() or [])
+    except Exception:
+        return []
+
+
+def _node_index(parent_node: Any, node: Any) -> int:
+    """Return a node index under parent, or -1 when it cannot be found."""
+    for index, child in enumerate(_child_nodes(parent_node)):
+        if child == node:
+            return index
+    return -1
+
+
+def _assert_same_parent(node: Any, target_node: Any) -> Any:
+    """Return the shared parent or raise a precise merge/reorder error."""
+    if node is None or target_node is None:
+        raise RuntimeError("Layer and target nodes are required.")
+    if node == target_node:
+        raise RuntimeError("Cannot operate on the same source and target layer.")
+
+    parent = node.parentNode()
+    target_parent = target_node.parentNode()
+    if parent is None or target_parent is None:
+        raise RuntimeError("Cannot operate on detached or root layers.")
+    if parent != target_parent:
+        raise RuntimeError("Generated layer and target layer must share the same parent.")
+    return parent
+
+
+def find_krita_node_by_id(
+    document_ref: KritaDocumentRef | None,
+    layer_id: str,
+) -> KritaNodeRef | None:
+    """Find a layer wrapper by stable Krita node id."""
+    target_id = str(layer_id or "")
+    if not target_id:
+        return None
+    for node_ref in all_krita_nodes(document_ref):
+        if node_ref.id_string == target_id:
+            return node_ref
+    return None
+
+
+def set_layer_visible(layer_ref: Any, visible: bool) -> None:
+    """Set layer visibility through a runtime-checked Krita node setter."""
+    node = _native_node(layer_ref)
+    set_visible = getattr(node, "setVisible", None)
+    if not callable(set_visible):
+        raise RuntimeError("Krita node does not expose setVisible().")
+    set_visible(bool(visible))
+    document_ref = _document_ref_for_layer(layer_ref)
+    if document_ref is not None:
+        document_ref.refresh_projection()
+
+
+def move_layer_immediately_above(
+    document_ref: KritaDocumentRef | None,
+    layer_ref: Any,
+    target_ref: Any,
+) -> KritaNodeRef:
+    """Move layer_ref to the immediate-above position for target_ref.
+
+    Krita mergeDown() always merges the current layer into its immediate lower
+    sibling. Therefore reorder must not merely put the layer somewhere above the
+    target; it must make the generated layer the direct sibling above the target
+    and verify that order before merge is allowed.
+    """
+    node = _native_node(layer_ref)
+    target_node = _native_node(target_ref)
+    parent = _assert_same_parent(node, target_node)
+
+    remove_child = getattr(parent, "removeChildNode", None)
+    add_child = getattr(parent, "addChildNode", None)
+    if not callable(remove_child) or not callable(add_child):
+        raise RuntimeError("Layer parent does not expose removeChildNode/addChildNode.")
+
+    current_node_index = _node_index(parent, node)
+    current_target_index = _node_index(parent, target_node)
+    if current_node_index < 0 or current_target_index < 0:
+        raise RuntimeError("Generated layer or target layer is missing from its parent.")
+
+    # childNodes() is bottom-to-top. Immediate-above means generated index is
+    # exactly target index + 1. If already correct, do not disturb the tree.
+    if current_node_index != current_target_index + 1:
+        remove_child(node)
+        add_child(node, target_node)
+
+    resolved_document = document_ref or _document_ref_for_layer(layer_ref)
+    if resolved_document is not None:
+        resolved_document.refresh_projection()
+
+    parent = target_node.parentNode()
+    node_index = _node_index(parent, node)
+    target_index = _node_index(parent, target_node)
+    if node_index != target_index + 1:
+        raise RuntimeError(
+            "Generated layer could not be moved directly above the target layer; "
+            "refusing mergeDown() to avoid merging into the wrong layer."
+        )
+
+    return KritaNodeRef(node, resolved_document)
+
+
+def move_layer_above(
+    document_ref: KritaDocumentRef | None,
+    layer_ref: Any,
+    anchor_ref: Any,
+) -> KritaNodeRef:
+    """Backward-compatible alias for direct-above reorder."""
+    return move_layer_immediately_above(document_ref, layer_ref, anchor_ref)
+
+
+def merge_layer_down(layer_ref: Any) -> KritaNodeRef | None:
+    """Merge a layer down through a runtime-checked Krita node merge API."""
+    node = _native_node(layer_ref)
+    merge_down = getattr(node, "mergeDown", None)
+    if not callable(merge_down):
+        raise RuntimeError("Krita node does not expose mergeDown().")
+
+    result = merge_down()
+    document_ref = _document_ref_for_layer(layer_ref)
+    if document_ref is not None:
+        document_ref.refresh_projection()
+
+    if result is None:
+        return None
+    return KritaNodeRef(result, document_ref)
+
+
+def merge_layer_into_target(
+    document_ref: KritaDocumentRef | None,
+    layer_ref: Any,
+    target_ref: Any,
+) -> KritaNodeRef:
+    """Safely merge layer_ref into target_ref and return the live merged layer.
+
+    Krita mergeDown() may return None even after a successful merge. The Repair
+    Docker needs the live merged layer id for later [X] delete, so this helper
+    resolves the surviving/recreated node from the parent child list when the
+    direct API return value is missing.
+    """
+    moved = move_layer_immediately_above(document_ref, layer_ref, target_ref)
+
+    moved_node = _native_node(moved)
+    target_node = _native_node(target_ref)
+    parent = _assert_same_parent(moved_node, target_node)
+
+    def node_id(node: Any) -> str:
+        unique_id = getattr(node, "uniqueId", None)
+        if callable(unique_id):
+            try:
+                return str(unique_id().toString())
+            except Exception:
+                return ""
+        return ""
+
+    target_id = node_id(target_node)
+    generated_id = node_id(moved_node)
+    before_nodes = _child_nodes(parent)
+    before_ids = {node_id(node) for node in before_nodes if node_id(node)}
+    target_index_before = _node_index(parent, target_node)
+
+    result = merge_layer_down(moved)
+    if result is not None:
+        return result
+
+    if document_ref is not None:
+        document_ref.refresh_projection()
+
+    after_nodes = _child_nodes(parent)
+
+    # 1) Some Krita builds keep the target node alive and merge pixels into it.
+    for node in after_nodes:
+        if target_id and node_id(node) == target_id:
+            return KritaNodeRef(node, document_ref)
+
+    # 2) Some builds keep the generated node alive after mergeDown().
+    for node in after_nodes:
+        if generated_id and node_id(node) == generated_id:
+            return KritaNodeRef(node, document_ref)
+
+    # 3) Some builds replace both nodes with a new merged node.
+    new_nodes = [
+        node
+        for node in after_nodes
+        if node_id(node) and node_id(node) not in before_ids
+    ]
+    if len(new_nodes) == 1:
+        return KritaNodeRef(new_nodes[0], document_ref)
+
+    # 4) Last safe fallback: mergeDown should leave the merged node around the
+    # original target position after generated+target collapsed into one layer.
+    if 0 <= target_index_before < len(after_nodes):
+        return KritaNodeRef(after_nodes[target_index_before], document_ref)
+
+    raise RuntimeError("mergeDown() finished but the live merged layer could not be resolved.")
+
+
+def delete_layer(layer_ref: Any) -> None:
+    """Delete a Krita layer through a runtime-checked node API.
+
+    Prefer Node.remove() when available because Krita owns the undo/document
+    bookkeeping for that operation. Fall back to parent.removeChildNode(node)
+    only when remove() is unavailable.
+    """
+    node = _native_node(layer_ref)
+    if node is None:
+        raise RuntimeError("Layer node is required for delete.")
+
+    parent = node.parentNode()
+    if parent is None:
+        raise RuntimeError("Cannot delete a detached or root layer.")
+
+    document_ref = _document_ref_for_layer(layer_ref)
+
+    remove = getattr(node, "remove", None)
+    if callable(remove):
+        remove()
+    else:
+        remove_child = getattr(parent, "removeChildNode", None)
+        if not callable(remove_child):
+            raise RuntimeError("Krita node does not expose remove(), and parent does not expose removeChildNode().")
+        remove_child(node)
+
+    if document_ref is not None:
+        document_ref.refresh_projection()
+
+
 def refresh_projection(document_ref: KritaDocumentRef) -> None:
     document_ref.refresh_projection()
 
