@@ -23,6 +23,7 @@ from ..docker_export_runner import DockerExportRunner
 from ..export_target_scanner import ExportMode
 from ..layer_selection_model import LayerSelectionModel
 from ..sync_map_store import SyncMapStore
+from .row_info_presenter import ExportRowInfoPresenter
 
 
 class DockerWindow(QWidget):
@@ -36,6 +37,7 @@ class DockerWindow(QWidget):
         self.sync_map_store: Any | None = None
         self.document: Any | None = None
         self.feature_flags = build_feature_flags()
+        self._row_info_presenter = ExportRowInfoPresenter()
         self._layer_checks: dict[str, QCheckBox] = {}
 
         self._mode_label = QLabel(self.feature_flags.mode_label, self)
@@ -456,8 +458,9 @@ class DockerWindow(QWidget):
         )
 
         for row in rows:
-            label = self._row_label(row)
-            checkbox = QCheckBox(label, self)
+            info = self._row_info_presenter.for_layer(row)
+            checkbox = QCheckBox(info.summary, self)
+            checkbox.setToolTip(info.tooltip)
             checkbox.setChecked(row.layer_id in selected)
             checkbox.stateChanged.connect(self._on_layer_checked)
             self._layer_checks[row.layer_id] = checkbox
@@ -525,9 +528,7 @@ class DockerWindow(QWidget):
         return ExportMode(str(mode))
 
     def _row_label(self, row) -> str:
-        kind = "Group" if row.is_group else "Layer"
-        visibility = "visible" if row.visible else "hidden"
-        return f"{row.name} — {kind}, {visibility}, {row.metadata_state}"
+        return self._row_info_presenter.for_layer(row).summary
 
     def _update_labels(self) -> None:
         self._selection_label.setText(
