@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
@@ -98,7 +99,42 @@ class SyncMapStore:
         raw.setdefault("records_by_layer_id", {})
         raw.setdefault("records_by_group_id", {})
         raw.setdefault("records_by_group_name", {})
+
+        # Migrate polluted params_snapshot in all record maps
+        for map_key in ("records_by_layer_id", "records_by_group_id", "records_by_group_name"):
+            record_map = raw.get(map_key, {})
+            for record in record_map.values():
+                if isinstance(record, dict) and isinstance(record.get("params_snapshot"), dict):
+                    record["params_snapshot"] = self._migrate_snapshot_tag_cache(
+                        record["params_snapshot"]
+                    )
+
         return raw
+
+    @staticmethod
+    def _migrate_snapshot_tag_cache(snapshot: dict[str, Any]) -> dict[str, Any]:
+        """Move top-level tag[*] keys into metadata.tag_cache (idempotent)."""
+        tag_pattern = re.compile(r"^tag\[(.+)\]$")
+        to_move: list[tuple[str, str, Any]] = []
+        for key, value in list(snapshot.items()):
+            m = tag_pattern.match(key)
+            if m:
+                to_move.append((key, m.group(1), value))
+        if not to_move:
+            return snapshot
+        metadata = snapshot.get("metadata")
+        if not isinstance(metadata, dict):
+            metadata = {}
+            snapshot["metadata"] = metadata
+        tag_cache = metadata.get("tag_cache")
+        if not isinstance(tag_cache, dict):
+            tag_cache = {}
+            metadata["tag_cache"] = tag_cache
+        for old_key, threshold_str, value in to_move:
+            if threshold_str not in tag_cache:
+                tag_cache[threshold_str] = value
+            del snapshot[old_key]
+        return snapshot
 
     def save(self) -> None:
         raw = {

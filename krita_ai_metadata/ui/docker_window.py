@@ -53,6 +53,8 @@ class DockerWindow(QWidget):
         self._report_label.setWordWrap(True)
 
         self._refresh_button = QPushButton("Refresh", self)
+        self._select_all_button = QPushButton("Select All", self)
+        self._unselect_all_button = QPushButton("Unselect All", self)
         self._import_selection_button = QPushButton("Import current Krita selection", self)
         self._auto_map_button = QPushButton("Auto map selected layers", self)
         self._preview_button = QPushButton("Preview export", self)
@@ -101,6 +103,8 @@ class DockerWindow(QWidget):
         self._layer_scroll_area.setWidget(self._layer_list_widget)
 
         self._refresh_button.clicked.connect(self.refresh)
+        self._select_all_button.clicked.connect(self.select_all)
+        self._unselect_all_button.clicked.connect(self.unselect_all)
         self._import_selection_button.clicked.connect(self.import_current_selection)
         self._auto_map_button.clicked.connect(self.auto_map_selected)
         self._preview_button.clicked.connect(self.preview_export)
@@ -135,6 +139,12 @@ class DockerWindow(QWidget):
         layout.addWidget(self._selection_label)
         layout.addWidget(self._refresh_button)
         layout.addLayout(filter_layout)
+
+        select_all_layout = QHBoxLayout()
+        select_all_layout.addWidget(self._select_all_button)
+        select_all_layout.addWidget(self._unselect_all_button)
+        layout.addLayout(select_all_layout)
+
         layout.addWidget(self._layer_scroll_area)
         layout.addWidget(self._import_selection_button)
         layout.addLayout(group_label_layout)
@@ -295,6 +305,31 @@ class DockerWindow(QWidget):
         self._manifest_checkbox.setToolTip("Optional: write manifest.json for exported PNG/JSON files.")
         self._overwrite_checkbox.setText("Overwrite existing PNG / JSON files")
         self._include_invisible_checkbox.setText("Include invisible selected targets")
+
+    def select_all(self) -> None:
+        """Select all currently filtered (visible) layer rows in the docker."""
+        filtered_ids = [
+            row.layer_id
+            for row in self.selection_model.filtered_rows(
+                show_synced=self._filter_synced.isChecked(),
+                show_unsynced=self._filter_unsynced.isChecked(),
+                show_visible=self._filter_visible.isChecked(),
+                show_hidden=self._filter_hidden.isChecked(),
+                show_groups=self._filter_groups.isChecked(),
+                show_layers=self._filter_layers.isChecked(),
+            )
+        ]
+        self.selection_model.select_layer_ids(filtered_ids)
+        for layer_id, checkbox in self._layer_checks.items():
+            checkbox.setChecked(layer_id in set(filtered_ids))
+        self._update_labels()
+
+    def unselect_all(self) -> None:
+        """Clear the docker layer selection."""
+        self.selection_model.select_layer_ids([])
+        for checkbox in self._layer_checks.values():
+            checkbox.setChecked(False)
+        self._update_labels()
 
     def choose_output_dir(self) -> None:
         """Let the user choose the docker export output directory."""

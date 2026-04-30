@@ -7,6 +7,27 @@ from typing import Any
 from .ai_diffusion_compat import deserialize_job_params as compat_deserialize_job_params
 
 
+def _build_jobparams_fields() -> set[str]:
+    """Return the set of valid JobParams dataclass field names.
+    Uses dynamic introspection when ai_diffusion is available,
+    falls back to a hardcoded set otherwise.
+    """
+    _FALLBACK = {
+        "bounds", "name", "regions", "metadata", "seed",
+        "has_mask", "is_layered", "inpaint_mode", "frame",
+        "animation_id", "resize_canvas",
+    }
+    try:
+        from dataclasses import fields as dc_fields
+        from ai_diffusion.jobs import JobParams
+        return {f.name for f in dc_fields(JobParams)}
+    except Exception:
+        return _FALLBACK
+
+
+_JOBPARAMS_FIELDS: set[str] = _build_jobparams_fields()
+
+
 def _serialize_value(value: Any) -> Any:
     if all(hasattr(value, attr) for attr in ("x", "y", "width", "height")):
         return [value.x, value.y, value.width, value.height]
@@ -48,6 +69,8 @@ class JobParamsSerializer:
 
     def deserialize_job_params(self, data: dict[str, Any]) -> Any:
         restored = dict(data)
+        # Defensive: strip keys not in JobParams dataclass to prevent TypeError
+        restored = {k: v for k, v in restored.items() if k in _JOBPARAMS_FIELDS}
         if isinstance(restored.get("frame"), list):
             restored["frame"] = tuple(restored["frame"])
         restored.pop("inpaint_mode", None)
