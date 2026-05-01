@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 
 from ..layer_selection_model import LayerSelectionRow
 
@@ -29,6 +30,10 @@ class ExportRowInfoPresenter:
             self._compact_state(row),
         ]
 
+        display_name = self._display_name(row.name)
+        if display_name.startswith("[Generated]"):
+            parts.append(display_name)
+
         if not row.visible:
             parts.append("hidden")
 
@@ -40,7 +45,7 @@ class ExportRowInfoPresenter:
 
     def _tooltip(self, row: LayerSelectionRow) -> str:
         lines = [
-            self._line("Name", row.name),
+            self._line("Name", self._display_name(row.name)),
             self._line("Layer id", row.layer_id),
             self._line("Layer type", row.layer_type),
             self._line("Kind", "group" if row.is_group else "layer"),
@@ -83,6 +88,32 @@ class ExportRowInfoPresenter:
 
     def _line(self, label: str, value: object) -> str:
         return f"{label}: {self._safe_text(value)}"
+
+    def _display_name(self, value: object) -> str:
+        raw = self._safe_text(value, "unknown")
+        if not raw.startswith("[Generated"):
+            return raw
+        short_name, seed_number = self._generated_name_parts(raw)
+        if seed_number:
+            return f"[Generated] {short_name} ({seed_number})"
+        return f"[Generated] {short_name}"
+
+    def _generated_name_parts(self, value: str) -> tuple[str, str]:
+        raw = str(value or "").strip()
+        seed_match = re.search(r"\((\d+)\)\s*$", raw)
+        seed_number = seed_match.group(1) if seed_match else ""
+        if seed_match:
+            raw = raw[:seed_match.start()].strip()
+
+        raw = re.sub(r"^\[Generated[^\]]*\]\s*", "", raw).strip()
+        raw = re.sub(r"\s+", " ", raw).strip(" -_")
+        if not raw:
+            raw = "generated"
+
+        max_chars = 36
+        if len(raw) > max_chars:
+            raw = raw[:max_chars].rstrip(" -_") + "..."
+        return raw, seed_number
 
     def _yes_no(self, value: bool) -> str:
         return "yes" if value else "no"
