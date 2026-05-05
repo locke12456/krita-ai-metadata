@@ -144,6 +144,15 @@ class AutoMappingService:
                     use_layer_name=use_layer_name,
                 )
 
+        if group_key is None and use_layer_name:
+            group_key = self.group_key_resolver.resolve_for_name(
+                sync_index=self._next_sync_index(),
+                group_name=self._layer_group_name(layer),
+                image_index=0,
+                job_id="manual",
+                seed=0,
+            )
+
         if group_key is None:
             warnings.append(f"No metadata snapshot found for layer '{layer.name}'.")
             return None, warnings
@@ -194,15 +203,18 @@ class AutoMappingService:
         group_key: GroupKey,
     ) -> SyncRecord:
         """Create a new group-backed sync record from a job-history snapshot."""
-        seed = int(snapshot.get("seed", 0) or 0)
-        job_id = str(snapshot.get("job_id", "") or "")
+        seed = int(snapshot.get("seed", group_key.seed) or group_key.seed or 0)
+        job_id = str(snapshot.get("job_id", group_key.job_id) or group_key.job_id or "")
+        image_index = int(
+            snapshot.get("image_index", group_key.image_index) or group_key.image_index or 0
+        )
 
         return SyncRecord(
             target_type="group",
             export_key=group_key.key,
             layer_ids=[layer.id_string],
             job_id=job_id,
-            image_index=int(snapshot.get("image_index", 0) or 0),
+            image_index=image_index,
             seed=seed,
             params_snapshot=dict(snapshot),
             group_id=group.id_string,
