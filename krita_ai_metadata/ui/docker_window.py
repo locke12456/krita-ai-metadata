@@ -89,6 +89,7 @@ class DockerWindow(QWidget):
         self._include_invisible_checkbox = QCheckBox("Include invisible selected targets", self)
         self._group_label = QLineEdit("", self)
         self._group_label.setPlaceholderText("Group label for new metadata groups")
+        self._use_layer_name_checkbox = QCheckBox("Use layer name as group name", self)
 
         self._mode_combo = QComboBox(self)
         self._mode_combo.addItem("Selected docker layers", ExportMode.selected)
@@ -109,6 +110,7 @@ class DockerWindow(QWidget):
         self._unselect_all_button.clicked.connect(self.unselect_all)
         self._import_selection_button.clicked.connect(self.import_current_selection)
         self._auto_map_button.clicked.connect(self.auto_map_selected)
+        self._use_layer_name_checkbox.stateChanged.connect(self._apply_use_layer_name_state)
         self._preview_button.clicked.connect(self.preview_export)
         self._export_button.clicked.connect(self.export_selected)
         self._browse_button.clicked.connect(self.choose_output_dir)
@@ -133,6 +135,7 @@ class DockerWindow(QWidget):
         group_label_layout = QHBoxLayout()
         group_label_layout.addWidget(QLabel("Group label:", self))
         group_label_layout.addWidget(self._group_label)
+        group_label_layout.addWidget(self._use_layer_name_checkbox)
 
         layout = QVBoxLayout()
         layout.addWidget(self._mode_label)
@@ -164,6 +167,7 @@ class DockerWindow(QWidget):
         layout.addWidget(self._report_label)
         layout.addStretch()
         self.setLayout(layout)
+        self._apply_use_layer_name_state()
 
         self.refresh()
 
@@ -192,7 +196,8 @@ class DockerWindow(QWidget):
         self._auto_map_button.setEnabled(
             self.feature_flags.prompt_search_enabled or self.feature_flags.manual_group_enabled
         )
-        self._group_label.setEnabled(self.feature_flags.manual_group_enabled)
+        self._use_layer_name_checkbox.setEnabled(self.feature_flags.manual_group_enabled)
+        self._apply_use_layer_name_state()
         self._preview_button.setEnabled(self.feature_flags.basic_export_enabled)
         self._export_button.setEnabled(self.feature_flags.basic_export_enabled)
         self._apply_mode_specific_option_labels()
@@ -355,6 +360,16 @@ class DockerWindow(QWidget):
         self._render_layer_rows()
         self._update_labels()
 
+    def _apply_use_layer_name_state(self) -> None:
+        """Enable or disable manual group label input based on layer-name mode."""
+        use_layer_name = bool(self._use_layer_name_checkbox.isChecked())
+        can_edit_label = self.feature_flags.manual_group_enabled and not use_layer_name
+        self._group_label.setEnabled(can_edit_label)
+        if use_layer_name:
+            self._group_label.setPlaceholderText("Using layer name")
+        else:
+            self._group_label.setPlaceholderText("Group label for new metadata groups")
+
     def auto_map_selected(self) -> None:
         """Run headless auto mapping for selected rows, then refresh preview state."""
         if self.layer_manager is None or self.sync_map_store is None:
@@ -370,17 +385,26 @@ class DockerWindow(QWidget):
             self._show_error("No docker-selected layers to auto map.")
             return
 
+        use_layer_name = self._use_layer_name_checkbox.isChecked()
         manual_label = self._group_label.text().strip()
-        if not manual_label:
-            self._show_error("Please enter a group label before auto mapping.")
+        if not use_layer_name and not manual_label:
+            self._show_error("Please enter a group label or enable 'Use layer name'.")
             return
 
         try:
             service = AutoMappingService(self.layer_manager, self.sync_map_store)
             if self.feature_flags.prompt_search_enabled:
-                result = service.auto_map_with_ai_history(layers, manual_label=manual_label)
+                result = service.auto_map_with_ai_history(
+                    layers,
+                    manual_label=manual_label,
+                    use_layer_name=use_layer_name,
+                )
             else:
-                result = service.create_manual_group_record(layers, manual_label=manual_label)
+                result = service.create_manual_group_record(
+                    layers,
+                    manual_label=manual_label,
+                    use_layer_name=use_layer_name,
+                )
             self.sync_map_store.load()
             self.selection_model.rebuild(self.layer_manager, self.sync_map_store)
             self._render_layer_rows()

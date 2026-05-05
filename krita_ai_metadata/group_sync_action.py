@@ -54,17 +54,21 @@ class MetadataGroupAction:
         seed = int(params_snapshot.get("seed", 0) or 0)
         job_id = str(params_snapshot.get("job_id", "manual") or "manual")
         default_key = self.key_resolver.resolve(sync_index, job_id, 0, seed)
+        default_group_name = self._default_group_name_for_selection(
+            layers,
+            default_key.group_name,
+        )
 
         group_name, accepted = QInputDialog.getText(
             None,
             "Add AI Metadata Group",
             "Group key/name:",
-            text=default_key.group_name,
+            text=default_group_name,
         )
         if not accepted:
             return None
 
-        group_name = group_name.strip() or default_key.group_name
+        group_name = group_name.strip() or default_group_name
         export_key = self.key_resolver.sanitize(group_name)
         mover = LayerMoveAdapter(document.layers)
 
@@ -129,17 +133,21 @@ class MetadataGroupAction:
         store = SyncMapStore(document_ref)
         sync_index = store.allocate_sync_index()
         default_key = self.key_resolver.resolve(sync_index, "manual", 0, 0)
+        default_group_name = self._default_group_name_for_selection(
+            nodes,
+            default_key.group_name,
+        )
 
         group_name, accepted = QInputDialog.getText(
             None,
             "Add AI Metadata Group",
             "Group key/name:",
-            text=default_key.group_name,
+            text=default_group_name,
         )
         if not accepted:
             return None
 
-        group_name = group_name.strip() or default_key.group_name
+        group_name = group_name.strip() or default_group_name
         export_key = self.key_resolver.sanitize(group_name)
         group = create_group_for_nodes(document_ref, nodes, group_name)
         document_ref.refresh_projection()
@@ -167,6 +175,20 @@ class MetadataGroupAction:
             f"Created manual-only group: {group.name}\nChildren: {len(child_ids)}\nSync: without AI metadata",
         )
         return AddGroupResult(group.name, export_key, len(child_ids))
+
+    def _default_group_name_for_selection(
+        self,
+        layers: list[Any],
+        fallback: str,
+    ) -> str:
+        """Return the first selected non-root layer name, or fallback."""
+        for layer in layers:
+            if getattr(layer, "is_root", False):
+                continue
+            name = str(getattr(layer, "name", "") or "").strip()
+            if name:
+                return name
+        return fallback
 
     def _selected_or_active_layers(self, document: Any) -> list[Any]:
         selected = self.view_adapter.unique_selected_layers(document.layers)

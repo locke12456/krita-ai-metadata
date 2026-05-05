@@ -52,6 +52,30 @@ class GroupKeyResolver:
             manual_label=label,
         )
 
+    def resolve_for_name(
+        self,
+        sync_index: int,
+        group_name: str,
+        job_id: str | None = None,
+        image_index: int = 0,
+        seed: int | None = None,
+    ) -> GroupKey:
+        """Use the caller-provided group name without adding a sync prefix."""
+        label = self.clean_label(group_name)
+        safe_job_id = str(job_id or "").strip()
+        job_id_short = self.short_job_id(safe_job_id)
+        safe_seed = int(seed or 0)
+        return GroupKey(
+            sync_index=sync_index,
+            job_id=safe_job_id,
+            image_index=image_index,
+            seed=safe_seed,
+            group_name=label,
+            key=self.sanitize(label),
+            job_id_short=job_id_short,
+            manual_label=label,
+        )
+
     def clean_label(self, label: str | None) -> str:
         cleaned = str(label or "").strip()
         return cleaned or "untitled"

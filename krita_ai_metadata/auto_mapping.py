@@ -44,17 +44,27 @@ class AutoMappingService:
         """Create or repair group-backed sync records for selected layers."""
         return self.auto_map_with_ai_history(layers, manual_label=manual_label)
 
-    def auto_map_with_ai_history(self, layers: list[Any], manual_label: str = "") -> AutoMappingResult:
+    def auto_map_with_ai_history(
+        self,
+        layers: list[Any],
+        manual_label: str = "",
+        *,
+        use_layer_name: bool = False,
+    ) -> AutoMappingResult:
         """Create or repair group-backed sync records using AI job history."""
         result = AutoMappingResult()
         label = manual_label.strip()
 
-        if not label:
+        if not label and not use_layer_name:
             result.warnings.append("Please enter a group label before auto mapping.")
             return result
 
         for layer in layers:
-            record, warnings = self._map_one_layer(layer, label)
+            record, warnings = self._map_one_layer(
+                layer,
+                label,
+                use_layer_name=use_layer_name,
+            )
             result.warnings.extend(warnings)
             if record is not None:
                 result.records.append(record)
@@ -67,7 +77,13 @@ class AutoMappingService:
         """Repair selected layer mappings through the same verified headless path."""
         return self.auto_map(layers, manual_label=manual_label)
 
-    def _map_one_layer(self, layer: Any, manual_label: str) -> tuple[SyncRecord | None, list[str]]:
+    def _map_one_layer(
+        self,
+        layer: Any,
+        manual_label: str,
+        *,
+        use_layer_name: bool = False,
+    ) -> tuple[SyncRecord | None, list[str]]:
         warnings: list[str] = []
 
         if layer.is_root:
@@ -110,13 +126,23 @@ class AutoMappingService:
         group_key: GroupKey | None = None
 
         if source_record_is_direct_layer:
-            group_key = self._group_key_for_record(source_record, manual_label)
+            group_key = self._group_key_for_record(
+                source_record,
+                manual_label,
+                layer=layer,
+                use_layer_name=use_layer_name,
+            )
         else:
             if source_record_is_stale_group:
                 warnings.append(f"Ignored stale group metadata for layer '{layer.name}'.")
             snapshot = self.job_history_resolver.params_snapshot_for_layers([layer])
             if snapshot:
-                group_key = self._group_key_from_snapshot(snapshot, manual_label)
+                group_key = self._group_key_from_snapshot(
+                    snapshot,
+                    manual_label,
+                    layer=layer,
+                    use_layer_name=use_layer_name,
+                )
 
         if group_key is None:
             warnings.append(f"No metadata snapshot found for layer '{layer.name}'.")
@@ -186,8 +212,23 @@ class AutoMappingService:
             manual_label=group_key.manual_label,
         )
 
-    def _group_key_for_record(self, record: SyncRecord, manual_label: str) -> GroupKey:
+    def _group_key_for_record(
+        self,
+        record: SyncRecord,
+        manual_label: str,
+        *,
+        layer: Any | None = None,
+        use_layer_name: bool = False,
+    ) -> GroupKey:
         sync_index = record.sync_index if record.sync_index > 0 else self._next_sync_index()
+        if use_layer_name:
+            return self.group_key_resolver.resolve_for_name(
+                sync_index=sync_index,
+                group_name=self._layer_group_name(layer),
+                image_index=record.image_index,
+                job_id=record.job_id,
+                seed=record.seed,
+            )
         label = record.manual_label or manual_label
         return self.group_key_resolver.resolve(
             sync_index=sync_index,
@@ -197,7 +238,22 @@ class AutoMappingService:
             seed=record.seed,
         )
 
-    def _group_key_from_snapshot(self, snapshot: dict[str, Any], manual_label: str) -> GroupKey:
+    def _group_key_from_snapshot(
+        self,
+        snapshot: dict[str, Any],
+        manual_label: str,
+        *,
+        layer: Any | None = None,
+        use_layer_name: bool = False,
+    ) -> GroupKey:
+        if use_layer_name:
+            return self.group_key_resolver.resolve_for_name(
+                sync_index=self._next_sync_index(),
+                group_name=self._layer_group_name(layer),
+                image_index=int(snapshot.get("image_index", 0) or 0),
+                job_id=str(snapshot.get("job_id", "") or ""),
+                seed=int(snapshot.get("seed", 0) or 0),
+            )
         return self.group_key_resolver.resolve(
             sync_index=self._next_sync_index(),
             manual_label=manual_label,
@@ -206,15 +262,26 @@ class AutoMappingService:
             seed=int(snapshot.get("seed", 0) or 0),
         )
 
+    def _layer_group_name(self, layer: Any | None) -> str:
+        if layer is None:
+            return "untitled"
+        return str(getattr(layer, "name", "") or "").strip() or "untitled"
+
     def _next_sync_index(self) -> int:
         return self.sync_map_store.allocate_sync_index()
 
-    def create_manual_group_record(self, layers: list[Any], manual_label: str = "") -> AutoMappingResult:
+    def create_manual_group_record(
+        self,
+        layers: list[Any],
+        manual_label: str = "",
+        *,
+        use_layer_name: bool = False,
+    ) -> AutoMappingResult:
         """Create manual-only group sync records without reading job history snapshots."""
         result = AutoMappingResult()
         label = manual_label.strip()
 
-        if not label:
+        if not label and not use_layer_name:
             result.warnings.append("Please enter a group label before creating a manual group record.")
             return result
 
@@ -232,13 +299,22 @@ class AutoMappingService:
                 continue
 
             sync_index = self._next_sync_index()
-            group_key = self.group_key_resolver.resolve(
-                sync_index=sync_index,
-                manual_label=label,
-                image_index=0,
-                job_id="manual",
-                seed=0,
-            )
+            if use_layer_name:
+                group_key = self.group_key_resolver.resolve_for_name(
+                    sync_index=sync_index,
+                    group_name=self._layer_group_name(layer),
+                    image_index=0,
+                    job_id="manual",
+                    seed=0,
+                )
+            else:
+                group_key = self.group_key_resolver.resolve(
+                    sync_index=sync_index,
+                    manual_label=label,
+                    image_index=0,
+                    job_id="manual",
+                    seed=0,
+                )
             group = self._create_manual_group(layer, group_key.group_name)
             self.layer_manager.update()
             group.refresh()
