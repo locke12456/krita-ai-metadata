@@ -50,13 +50,14 @@ class AutoMappingService:
         manual_label: str = "",
         *,
         use_layer_name: bool = False,
+        manual_group: bool = False,
     ) -> AutoMappingResult:
         """Create or repair group-backed sync records using AI job history."""
         result = AutoMappingResult()
         label = manual_label.strip()
 
         if not label and not use_layer_name:
-            result.warnings.append("Please enter a group label before auto mapping.")
+            result.warnings.append("Please enter a group label or enable 'Use layer name'.")
             return result
 
         for layer in layers:
@@ -64,6 +65,7 @@ class AutoMappingService:
                 layer,
                 label,
                 use_layer_name=use_layer_name,
+                manual_group=manual_group,
             )
             result.warnings.extend(warnings)
             if record is not None:
@@ -83,6 +85,7 @@ class AutoMappingService:
         manual_label: str,
         *,
         use_layer_name: bool = False,
+        manual_group: bool = False,
     ) -> tuple[SyncRecord | None, list[str]]:
         warnings: list[str] = []
 
@@ -144,14 +147,24 @@ class AutoMappingService:
                     use_layer_name=use_layer_name,
                 )
 
-        if group_key is None and use_layer_name:
-            group_key = self.group_key_resolver.resolve_for_name(
-                sync_index=self._next_sync_index(),
-                group_name=self._layer_group_name(layer),
-                image_index=0,
-                job_id="manual",
-                seed=0,
-            )
+        if group_key is None and (manual_group or use_layer_name):
+            if use_layer_name:
+                group_key = self.group_key_resolver.resolve_for_name(
+                    sync_index=self._next_sync_index(),
+                    group_name=self._layer_group_name(layer),
+                    image_index=0,
+                    job_id="manual",
+                    seed=0,
+                )
+            else:
+                group_key = self.group_key_resolver.resolve(
+                    sync_index=self._next_sync_index(),
+                    manual_label=manual_label or self._layer_group_name(layer),
+                    image_index=0,
+                    job_id="manual",
+                    seed=0,
+                )
+            warnings.append(f"Created manual group without AI metadata for layer '{layer.name}'.")
 
         if group_key is None:
             warnings.append(f"No metadata snapshot found for layer '{layer.name}'.")

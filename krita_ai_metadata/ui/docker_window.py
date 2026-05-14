@@ -84,6 +84,8 @@ class DockerWindow(QWidget):
         self._browse_button = QPushButton("Browse", self)
         self._overwrite_checkbox = QCheckBox("Overwrite existing PNG / JSON files", self)
         self._allow_unresolved_checkbox = QCheckBox("Allow unresolved AI metadata export", self)
+        self._manual_group_checkbox = QCheckBox("Create manual group when metadata is missing", self)
+        self._manual_group_checkbox.setChecked(True)
         self._manifest_checkbox = QCheckBox("Write manifest JSON", self)
         self._manifest_checkbox.setChecked(True)
         self._include_invisible_checkbox = QCheckBox("Include invisible selected targets", self)
@@ -153,6 +155,7 @@ class DockerWindow(QWidget):
         layout.addWidget(self._layer_scroll_area)
         layout.addWidget(self._import_selection_button)
         layout.addLayout(group_label_layout)
+        layout.addWidget(self._manual_group_checkbox)
         layout.addWidget(self._auto_map_button)
         layout.addLayout(output_layout)
         layout.addWidget(self._output_status_label)
@@ -197,6 +200,7 @@ class DockerWindow(QWidget):
             self.feature_flags.prompt_search_enabled or self.feature_flags.manual_group_enabled
         )
         self._use_layer_name_checkbox.setEnabled(self.feature_flags.manual_group_enabled)
+        self._manual_group_checkbox.setEnabled(self.feature_flags.manual_group_enabled)
         self._apply_use_layer_name_state()
         self._preview_button.setEnabled(self.feature_flags.basic_export_enabled)
         self._export_button.setEnabled(self.feature_flags.basic_export_enabled)
@@ -386,6 +390,7 @@ class DockerWindow(QWidget):
             return
 
         use_layer_name = self._use_layer_name_checkbox.isChecked()
+        manual_group = self._manual_group_checkbox.isChecked()
         manual_label = self._group_label.text().strip()
         if not use_layer_name and not manual_label:
             self._show_error("Please enter a group label or enable 'Use layer name'.")
@@ -398,6 +403,7 @@ class DockerWindow(QWidget):
                     layers,
                     manual_label=manual_label,
                     use_layer_name=use_layer_name,
+                    manual_group=manual_group,
                 )
             else:
                 result = service.create_manual_group_record(
@@ -410,9 +416,12 @@ class DockerWindow(QWidget):
             self._render_layer_rows()
             self._update_labels()
             self.preview_export()
-            self._append_report(
+            auto_map_lines = [
                 f"Auto mapped records: {result.mapped_count}; warnings: {len(result.warnings)}"
-            )
+            ]
+            for warning in result.warnings[:8]:
+                auto_map_lines.append(f"Warning: {warning}")
+            self._append_report("\n".join(auto_map_lines))
         except Exception as exc:
             self._show_error(f"Auto mapping failed: {exc}")
 
