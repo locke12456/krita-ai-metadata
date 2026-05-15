@@ -91,7 +91,17 @@ class RemapMetadataService:
         report = RemapMetadataReport()
         for row in rows:
             layer = layer_lookup.get(row.layer_id)
-            result = self._remap_one(row, layer)
+            history_layers = self._history_layers_for(layer)
+            history_names = [
+                str(getattr(item, "name", "") or "")
+                for item in history_layers
+                if getattr(item, "name", "") or ""
+            ]
+            _log(
+                f"  lookup name={row.name!r} is_group={row.is_group} "
+                f"history_names={history_names!r}"
+            )
+            result = self._remap_one(row, layer, history_layers)
             _log(
                 f"  -> {result.status:<8} name={row.name!r} "
                 f"is_group={row.is_group} reason={result.reason!r}"
@@ -103,7 +113,26 @@ class RemapMetadataService:
         )
         return report
 
-    def _remap_one(self, row: LayerSelectionRow, layer: Any) -> RemapMetadataRowResult:
+    def _history_layers_for(self, layer: Any) -> list[Any]:
+        """Return the row layer plus descendants for AI history name matching."""
+        result: list[Any] = []
+
+        def visit(item: Any) -> None:
+            if item is None:
+                return
+            result.append(item)
+            for child in getattr(item, "child_layers", []) or []:
+                visit(child)
+
+        visit(layer)
+        return result
+
+    def _remap_one(
+        self,
+        row: LayerSelectionRow,
+        layer: Any,
+        history_layers: list[Any],
+    ) -> RemapMetadataRowResult:
         try:
             # 1. Layer must exist in the active document.
             if layer is None:
@@ -143,8 +172,13 @@ class RemapMetadataService:
                 )
 
             # 4. Retry metadata snapshot via job history.
-            snapshot = self.job_history_resolver.params_snapshot_for_layers([layer])
+            snapshot = self.job_history_resolver.params_snapshot_for_layers(history_layers)
             if not snapshot:
+                checked_names = [
+                    str(getattr(item, "name", "") or "")
+                    for item in history_layers
+                    if getattr(item, "name", "") or ""
+                ]
                 return RemapMetadataRowResult(
                     layer_id=row.layer_id,
                     name=row.name,
@@ -152,7 +186,8 @@ class RemapMetadataService:
                     status="failed",
                     reason=(
                         f"No matching AI job history snapshot for layer {row.name!r} "
-                        f"(existing_manual_record={existing is not None})."
+                        f"(existing_manual_record={existing is not None}; "
+                        f"checked_layer_names={checked_names!r})."
                     ),
                 )
 
