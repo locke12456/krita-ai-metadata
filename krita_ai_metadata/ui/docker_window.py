@@ -437,34 +437,57 @@ class DockerWindow(QWidget):
             self._show_error(f"Auto mapping failed: {exc}")
 
     def remap_metadata_selected(self) -> None:
-        """Retry metadata mapping for unsynced selected rows; never touch layer structure."""
+        """Re-map metadata for selected rows whose record is manual or missing."""
+        import sys
+        import traceback
+
+        print("[remap_metadata] clicked", file=sys.stderr, flush=True)
+
         if self.layer_manager is None or self.sync_map_store is None:
             self._show_error("Re-map requires layer manager and sync map context.")
+            print("[remap_metadata] aborted: missing context", file=sys.stderr, flush=True)
             return
 
         if not self.feature_flags.prompt_search_enabled:
             self._show_error(
                 "Re-map requires AI Diffusion job history (prompt search disabled)."
             )
+            print("[remap_metadata] aborted: prompt search disabled", file=sys.stderr, flush=True)
             return
 
         try:
             selected_ids = set(self.selection_model.selected_layer_ids)
+            # Do NOT filter by metadata_state: a row with a manual SyncRecord
+            # still shows as "synced" but is exactly what re-map must retry.
             candidates = [
                 row
                 for row in self.selection_model.rows
-                if row.layer_id in selected_ids and row.metadata_state == "unsynced"
+                if row.layer_id in selected_ids
             ]
             if self._remap_only_groups_checkbox.isChecked():
                 candidates = [row for row in candidates if row.is_group]
 
+            print(
+                f"[remap_metadata] selection={len(selected_ids)} candidates={len(candidates)} "
+                f"only_groups={self._remap_only_groups_checkbox.isChecked()}",
+                file=sys.stderr,
+                flush=True,
+            )
+
             if not candidates:
                 self._show_error(
-                    "No unsynced rows in current selection. Re-map operates only on unsynced rows."
+                    "No candidate rows in current selection. "
+                    "Disable 'Only groups' to include layers."
                 )
                 return
 
             layer_lookup = {layer.id_string: layer for layer in self.layer_manager.all}
+            print(
+                f"[remap_metadata] layer_lookup_size={len(layer_lookup)}",
+                file=sys.stderr,
+                flush=True,
+            )
+
             service = RemapMetadataService(self.sync_map_store)
             report = service.remap_for_rows(candidates, layer_lookup)
 
@@ -474,20 +497,50 @@ class DockerWindow(QWidget):
             self._update_labels()
             self.preview_export()
 
+            failed_rows = [r for r in report.results if r.status == "failed"]
+            remapped_rows = [r for r in report.results if r.status == "remapped"]
+            skipped_rows = [r for r in report.results if r.status == "skipped"]
+
             lines = [
                 f"Re-map: remapped={report.remapped_count()}; "
                 f"skipped={report.skipped_count()}; failed={report.failed_count()}"
             ]
-            for r in report.results:
-                if r.status == "remapped":
-                    lines.append(f"OK  {r.name}: remapped")
-                elif r.status == "skipped":
-                    lines.append(f"--  {r.name}: skipped - {r.reason}")
-                else:
-                    lines.append(f"X   {r.name}: failed - {r.reason}")
-            self._append_report("".join(lines))
+
+            if failed_rows:
+                lines.append("")
+                lines.append(f"=== FAILED ({len(failed_rows)}) ===")
+                for r in failed_rows:
+                    lines.append(f"X   [{r.name}] {r.reason}")
+
+            if remapped_rows:
+                lines.append("")
+                lines.append(f"=== REMAPPED ({len(remapped_rows)}) ===")
+                for r in remapped_rows:
+                    lines.append(f"OK  [{r.name}]")
+
+            if skipped_rows:
+                lines.append("")
+                lines.append(f"=== SKIPPED ({len(skipped_rows)}) ===")
+                preview_n = 5
+                for r in skipped_rows[:preview_n]:
+                    lines.append(f"--  [{r.name}] {r.reason}")
+                if len(skipped_rows) > preview_n:
+                    lines.append(
+                        f"--  ... and {len(skipped_rows) - preview_n} more skipped "
+                        f"(see Krita console for full list)"
+                    )
+
+            self._append_report("\n".join(lines))
+            print(
+                f"[remap_metadata] done remapped={report.remapped_count()} "
+                f"skipped={report.skipped_count()} failed={report.failed_count()}",
+                file=sys.stderr,
+                flush=True,
+            )
         except Exception as exc:
+            traceback.print_exc()
             self._show_error(f"Re-map failed: {exc}")
+            print(f"[remap_metadata] exception {exc!r}", file=sys.stderr, flush=True)
 
     def preview_export(self) -> None:
         """Run read-only preview for the explicit docker selection."""

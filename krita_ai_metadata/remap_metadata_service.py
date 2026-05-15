@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -9,9 +10,13 @@ from .layer_selection_model import LayerSelectionRow
 from .sync_map_store import SyncMapStore, SyncRecord
 
 
+def _log(msg):
+    # Print to stderr so Krita's console shows it regardless of stdout buffering.
+    print(f"[remap_metadata] {msg}", file=sys.stderr, flush=True)
+
+
 @dataclass(slots=True)
 class RemapMetadataRowResult:
-    # Per-row outcome of the metadata-only re-map pipeline.
     layer_id: str
     name: str
     is_group: bool
@@ -22,7 +27,6 @@ class RemapMetadataRowResult:
 
 @dataclass(slots=True)
 class RemapMetadataReport:
-    # Aggregated report returned by RemapMetadataService.remap_for_rows.
     results: list[RemapMetadataRowResult] = field(default_factory=list)
 
     def remapped_count(self) -> int:
@@ -35,13 +39,28 @@ class RemapMetadataReport:
         return sum(1 for r in self.results if r.status == "failed")
 
 
-class RemapMetadataService:
-    """Retry metadata mapping for unsynced rows.
+def is_manual_record(record):
+    # Manual placeholders are written by AutoMappingService manual fallbacks.
+    # Primary marker: job_id literal "manual". Secondary: empty params_snapshot.
+    if record is None:
+        return False
+    if str(getattr(record, "job_id", "") or "").strip().lower() == "manual":
+        return True
+    if str(getattr(record, "job_id_short", "") or "").strip().lower() == "manual":
+        return True
+    snapshot = getattr(record, "params_snapshot", None) or {}
+    if not snapshot:
+        return True
+    return False
 
-    Invariants enforced by this service:
+
+class RemapMetadataService:
+    """Retry metadata mapping for manual / unsynced rows.
+
+    Invariants:
     - Never moves a Krita layer.
     - Never creates a Krita group node.
-    - Never overwrites an existing SyncRecord.
+    - Never overwrites a record that already has real AI metadata.
     - Always emits a RemapMetadataRowResult per input row.
     - Failed / skipped rows always carry a non-empty reason.
     """
@@ -56,16 +75,32 @@ class RemapMetadataService:
         self.job_history_resolver = job_history_resolver or JobHistoryResolver()
         self.group_key_resolver = group_key_resolver or GroupKeyResolver()
 
+    def existing_record_for(self, row: LayerSelectionRow):
+        if row.is_group:
+            return self.sync_map_store.resolve_group(
+                group_id=row.layer_id, group_name=row.name
+            )
+        return self.sync_map_store.resolve_layer(row.layer_id)
+
     def remap_for_rows(
         self,
         rows: list[LayerSelectionRow],
         layer_lookup: dict[str, Any],
     ) -> RemapMetadataReport:
-        # rows are pre-filtered by caller; layer_lookup maps layer_id -> krita layer.
+        _log(f"remap_for_rows: rows={len(rows)} lookup_size={len(layer_lookup)}")
         report = RemapMetadataReport()
         for row in rows:
             layer = layer_lookup.get(row.layer_id)
-            report.results.append(self._remap_one(row, layer))
+            result = self._remap_one(row, layer)
+            _log(
+                f"  -> {result.status:<8} name={row.name!r} "
+                f"is_group={row.is_group} reason={result.reason!r}"
+            )
+            report.results.append(result)
+        _log(
+            f"remap_for_rows done: remapped={report.remapped_count()} "
+            f"skipped={report.skipped_count()} failed={report.failed_count()}"
+        )
         return report
 
     def _remap_one(self, row: LayerSelectionRow, layer: Any) -> RemapMetadataRowResult:
@@ -77,7 +112,7 @@ class RemapMetadataService:
                     name=row.name,
                     is_group=row.is_group,
                     status="failed",
-                    reason=f"Layer not found in document for id '{row.layer_id}'.",
+                    reason=f"Layer not found in document for id {row.layer_id!r}.",
                 )
 
             # 2. Root layer is never re-mapped.
@@ -90,37 +125,24 @@ class RemapMetadataService:
                     reason="Root layer is not eligible for re-map.",
                 )
 
-            # 3. Never overwrite an existing record.
-            if row.is_group:
-                existing = self.sync_map_store.resolve_group(
-                    group_id=row.layer_id, group_name=row.name
+            # 3. Inspect existing record. Only manual / missing records may be
+            #    re-mapped; real AI metadata is left untouched.
+            existing = self.existing_record_for(row)
+            if existing is not None and not is_manual_record(existing):
+                snapshot_keys = ",".join(sorted((existing.params_snapshot or {}).keys()))
+                return RemapMetadataRowResult(
+                    layer_id=row.layer_id,
+                    name=row.name,
+                    is_group=row.is_group,
+                    status="skipped",
+                    reason=(
+                        f"Row already has AI metadata "
+                        f"(job_id={existing.job_id!r}, snapshot_keys=[{snapshot_keys}])."
+                    ),
+                    record=existing,
                 )
-                if existing is not None:
-                    return RemapMetadataRowResult(
-                        layer_id=row.layer_id,
-                        name=row.name,
-                        is_group=True,
-                        status="skipped",
-                        reason=(
-                            "Group already has a metadata record; "
-                            "re-map only targets unsynced rows."
-                        ),
-                    )
-            else:
-                existing = self.sync_map_store.resolve_layer(row.layer_id)
-                if existing is not None:
-                    return RemapMetadataRowResult(
-                        layer_id=row.layer_id,
-                        name=row.name,
-                        is_group=False,
-                        status="skipped",
-                        reason=(
-                            "Layer already has a metadata record; "
-                            "re-map only targets unsynced rows."
-                        ),
-                    )
 
-            # 4. Retry metadata snapshot via job history (the only allowed retry).
+            # 4. Retry metadata snapshot via job history.
             snapshot = self.job_history_resolver.params_snapshot_for_layers([layer])
             if not snapshot:
                 return RemapMetadataRowResult(
@@ -128,13 +150,21 @@ class RemapMetadataService:
                     name=row.name,
                     is_group=row.is_group,
                     status="failed",
-                    reason=f"No matching AI job history snapshot for layer '{row.name}'.",
+                    reason=(
+                        f"No matching AI job history snapshot for layer {row.name!r} "
+                        f"(existing_manual_record={existing is not None})."
+                    ),
                 )
 
             job_id = str(snapshot.get("job_id", "") or "")
             image_index = int(snapshot.get("image_index", 0) or 0)
             seed = int(snapshot.get("seed", 0) or 0)
-            sync_index = self.sync_map_store.allocate_sync_index()
+
+            # Reuse the manual record's sync_index when overwriting so export keys stay stable.
+            if existing is not None and existing.sync_index > 0:
+                sync_index = existing.sync_index
+            else:
+                sync_index = self.sync_map_store.allocate_sync_index()
 
             # 5. Build SyncRecord. Do NOT mutate Krita layer structure.
             if row.is_group:
@@ -145,10 +175,15 @@ class RemapMetadataService:
                     image_index=image_index,
                     seed=seed,
                 )
+                preserved_layer_ids = (
+                    list(existing.layer_ids)
+                    if existing is not None and existing.layer_ids
+                    else [row.layer_id]
+                )
                 record = SyncRecord(
                     target_type="group",
                     export_key=group_key.key,
-                    layer_ids=[row.layer_id],
+                    layer_ids=preserved_layer_ids,
                     job_id=job_id,
                     image_index=image_index,
                     seed=seed,
@@ -176,7 +211,7 @@ class RemapMetadataService:
                     manual_label="",
                 )
 
-            # 6. Write through the existing store API.
+            # 6. Write through the existing store API (overwrites the manual record).
             applied = self.sync_map_store.record_apply(record)
             return RemapMetadataRowResult(
                 layer_id=row.layer_id,
@@ -187,7 +222,6 @@ class RemapMetadataService:
                 record=applied,
             )
         except Exception as exc:
-            # Defensive: never let an exception bubble to the docker.
             return RemapMetadataRowResult(
                 layer_id=row.layer_id,
                 name=row.name,
