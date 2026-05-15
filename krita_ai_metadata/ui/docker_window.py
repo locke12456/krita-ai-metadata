@@ -23,6 +23,7 @@ from ..docker_export_runner import DockerExportRunner
 from ..export_target_scanner import ExportMode
 from ..layer_selection_model import LayerSelectionModel
 from ..sync_map_store import SyncMapStore
+from ..remap_metadata_service import RemapMetadataService
 from .row_info_presenter import ExportRowInfoPresenter
 
 
@@ -59,6 +60,9 @@ class DockerWindow(QWidget):
         self._unselect_all_button = QPushButton("Unselect All", self)
         self._import_selection_button = QPushButton("Import current Krita selection", self)
         self._auto_map_button = QPushButton("Auto map selected layers", self)
+        self._remap_metadata_button = QPushButton("Re-map metadata for unsynced selected", self)
+        self._remap_only_groups_checkbox = QCheckBox("Only groups", self)
+        self._remap_only_groups_checkbox.setChecked(True)
         self._preview_button = QPushButton("Preview export", self)
         self._export_button = QPushButton("Export selected PNG metadata", self)
 
@@ -112,6 +116,7 @@ class DockerWindow(QWidget):
         self._unselect_all_button.clicked.connect(self.unselect_all)
         self._import_selection_button.clicked.connect(self.import_current_selection)
         self._auto_map_button.clicked.connect(self.auto_map_selected)
+        self._remap_metadata_button.clicked.connect(self.remap_metadata_selected)
         self._use_layer_name_checkbox.stateChanged.connect(self._apply_use_layer_name_state)
         self._preview_button.clicked.connect(self.preview_export)
         self._export_button.clicked.connect(self.export_selected)
@@ -157,6 +162,10 @@ class DockerWindow(QWidget):
         layout.addLayout(group_label_layout)
         layout.addWidget(self._manual_group_checkbox)
         layout.addWidget(self._auto_map_button)
+        remap_layout = QHBoxLayout()
+        remap_layout.addWidget(self._remap_metadata_button)
+        remap_layout.addWidget(self._remap_only_groups_checkbox)
+        layout.addLayout(remap_layout)
         layout.addLayout(output_layout)
         layout.addWidget(self._output_status_label)
         layout.addLayout(mode_layout)
@@ -199,6 +208,8 @@ class DockerWindow(QWidget):
         self._auto_map_button.setEnabled(
             self.feature_flags.prompt_search_enabled or self.feature_flags.manual_group_enabled
         )
+        self._remap_metadata_button.setEnabled(self.feature_flags.prompt_search_enabled)
+        self._remap_only_groups_checkbox.setEnabled(self.feature_flags.prompt_search_enabled)
         self._use_layer_name_checkbox.setEnabled(self.feature_flags.manual_group_enabled)
         self._manual_group_checkbox.setEnabled(self.feature_flags.manual_group_enabled)
         self._apply_use_layer_name_state()
@@ -424,6 +435,59 @@ class DockerWindow(QWidget):
             self._append_report("\n".join(auto_map_lines))
         except Exception as exc:
             self._show_error(f"Auto mapping failed: {exc}")
+
+    def remap_metadata_selected(self) -> None:
+        """Retry metadata mapping for unsynced selected rows; never touch layer structure."""
+        if self.layer_manager is None or self.sync_map_store is None:
+            self._show_error("Re-map requires layer manager and sync map context.")
+            return
+
+        if not self.feature_flags.prompt_search_enabled:
+            self._show_error(
+                "Re-map requires AI Diffusion job history (prompt search disabled)."
+            )
+            return
+
+        try:
+            selected_ids = set(self.selection_model.selected_layer_ids)
+            candidates = [
+                row
+                for row in self.selection_model.rows
+                if row.layer_id in selected_ids and row.metadata_state == "unsynced"
+            ]
+            if self._remap_only_groups_checkbox.isChecked():
+                candidates = [row for row in candidates if row.is_group]
+
+            if not candidates:
+                self._show_error(
+                    "No unsynced rows in current selection. Re-map operates only on unsynced rows."
+                )
+                return
+
+            layer_lookup = {layer.id_string: layer for layer in self.layer_manager.all}
+            service = RemapMetadataService(self.sync_map_store)
+            report = service.remap_for_rows(candidates, layer_lookup)
+
+            self.sync_map_store.load()
+            self.selection_model.rebuild(self.layer_manager, self.sync_map_store)
+            self._render_layer_rows()
+            self._update_labels()
+            self.preview_export()
+
+            lines = [
+                f"Re-map: remapped={report.remapped_count()}; "
+                f"skipped={report.skipped_count()}; failed={report.failed_count()}"
+            ]
+            for r in report.results:
+                if r.status == "remapped":
+                    lines.append(f"OK  {r.name}: remapped")
+                elif r.status == "skipped":
+                    lines.append(f"--  {r.name}: skipped - {r.reason}")
+                else:
+                    lines.append(f"X   {r.name}: failed - {r.reason}")
+            self._append_report("".join(lines))
+        except Exception as exc:
+            self._show_error(f"Re-map failed: {exc}")
 
     def preview_export(self) -> None:
         """Run read-only preview for the explicit docker selection."""
